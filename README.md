@@ -2,25 +2,48 @@
 
 **Algorand-native policy & transparency layer for agentic commerce.**
 
-Before an AI agent pays via x402, RationAlgo records *why* it chose to spend — vendor, alternatives, expected value, confidence, and policy checks. A hash of that decision is committed to Algorand Testnet. After payment, outcomes are compared to predictions so humans can audit agent spending.
+Before an AI agent pays via x402, RationAlgo commits structured reasoning on Algorand — creating a tamper-evident audit trail. After payment, outcomes are compared to predictions so humans can trust agent spending decisions.
 
 Built for the [Algorand x402 Agentic Commerce Hackathon](https://luma.com/agentic-commerce-hack) (Infrastructure + EURQ tracks).
 
+**Infrastructure deliverable:** [`backend/pkg/provenance/`](backend/pkg/provenance/) — the **RAv1** note-field standard (`RAv1:` pre-payment, `RAv1out:` post-outcome). See [`SPEC.md`](backend/pkg/provenance/SPEC.md).
+
 ---
 
-## Current status (Phases 0–1)
+## Current status
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| Go build | ✅ | `go build ./cmd/rationalgo` |
+| `pkg/provenance/` (RAv1) | ✅ | Encode/decode, tests, SPEC, standalone example |
 | x402 probe (`spike x402`) | ✅ | HTTP 402 from GoPlausible `/avm/weather` |
-| Algorand commit (`spike algorand`) | ⚠️ | Wallet address set; mnemonic must be **exactly 25 words** (Algorand SDK requirement) |
-| HTTP API (`serve`) | ✅ | `GET /health`, `GET /api/state`, `POST /api/state/reset` |
-| Dashboard → API | ✅ | Loads seed state from backend; shows **api live** when connected |
-| Hero demo orchestration | 🔜 Phase 3 | Policy engine, live demo run, on-chain commits per decision |
-| x402 paid flow | 🔜 Phase 2 | Sign payment and retry after 402 |
+| x402 pay stub (`spike x402 pay`) | ✅ | Probe + demo JSON (real EURQ payment next) |
+| Algorand legacy spike (`spike algorand`) | ⚠️ | Needs valid Pera **Algorand** passphrase + funded wallet |
+| RAv1 spike (`spike provenance`) | ⚠️ | Same wallet requirement; commits `RAv1:` envelope |
+| Vendor catalog | ✅ | `internal/catalog/` + `services/vendor/` adapter |
+| Reasoning / policy / outcome | ✅ | Stub services wired into hero orchestrator |
+| Hero orchestrator | ✅ | `scenario/hero.go` — normal + anomaly flows |
+| HTTP API | ✅ | State, decisions, scenario SSE stream |
+| Dashboard → API | ✅ | Hydrates from `GET /api/state`; demo still client-side |
+| Real EURQ `PayAndFetch` | 🔜 | Parse `PAYMENT-REQUIRED`, sign ASA, retry |
+| Frontend → scenario SSE | 🔜 | Replace `demoScenario.ts` timers with backend stream |
 
-**Last validation:** x402 spike passes. Algorand spike blocked until `RATIONALGO_MNEMONIC` has all 25 words from Pera (Settings → Security → copy full passphrase for the same account as `RATIONALGO_WALLET_ADDRESS`).
+---
+
+## Hero demo (target)
+
+**Task:** *"Should drone deliveries operate in Frankfurt in the next 2 hours?"*
+
+| Flow | What happens |
+|------|----------------|
+| **Normal** | GoPlausible paid weather wins over OpenMeteo → RAv1 commit on Algorand → x402 payment → outcome verified → RAv1out commit |
+| **Anomaly** | Vendor price injected at 10× → policy blocks → **no** Algorand tx, **no** x402 call → alert fires |
+
+Trigger via API (backend ready; frontend wiring pending):
+
+```bash
+curl -N -X POST "http://localhost:8080/api/scenario/run"
+curl -N -X POST "http://localhost:8080/api/scenario/run?scenario=anomaly"
+```
 
 ---
 
@@ -28,257 +51,78 @@ Built for the [Algorand x402 Agentic Commerce Hackathon](https://luma.com/agenti
 
 | Path | Purpose |
 |------|---------|
-| `backend/cmd/rationalgo/` | CLI entrypoint — `status`, `serve`, `spike` |
-| `backend/internal/config/` | Load `.env`, validate wallet credentials |
-| `backend/internal/models/` | Domain types (`Decision`, spike results) |
-| `backend/internal/store/` | Seed data for the dashboard |
-| `backend/internal/repository/` | Thread-safe in-memory state |
-| `backend/internal/api/` | HTTP handlers (Phase 1) |
-| `backend/internal/services/algorand/` | Testnet client + hash commitment |
-| `backend/internal/services/x402/` | HTTP 402 probe (payment in Phase 2) |
-| `backend/internal/services/decision/` | SHA-256 hashing of decision JSON |
-| `backend/internal/util/` | Pera explorer URL helpers |
+| `backend/pkg/provenance/` | **RAv1 standard** — importable, stdlib-only |
+| `backend/cmd/rationalgo/` | CLI — `status`, `serve`, `spike` |
+| `backend/internal/catalog/` | Curated vendor registry (MVP source of truth) |
+| `backend/internal/scenario/` | Hero demo orchestrator + SSE events |
+| `backend/internal/models/` | `DecisionRecord`, `VendorOption`, `PolicyResult`, dashboard types |
+| `backend/internal/services/` | `algorand`, `x402`, `decision`, `vendor`, `reasoning`, `policy`, `outcome` |
+| `backend/internal/api/` | HTTP handlers (stdlib `net/http`) |
+| `backend/internal/repository/` | Thread-safe in-memory store |
+| `backend/internal/store/` | Dashboard seed data |
+| `backend/internal/util/` | Explorer URLs, 24/25-word mnemonic normalization |
 | `frontend/` | React audit dashboard |
 
 ---
 
-## How the codebase works
-
-This section is written to describe current state of the project. It describes **what exists today**, not the full hero demo (which lands in Phases 2–4).
-
-### Big picture
+## Architecture
 
 ```mermaid
-flowchart LR
-    subgraph CLI["CLI (cmd/rationalgo)"]
-        STATUS[status]
-        SPIKE[spike algorand / x402]
+flowchart TB
+    subgraph Infra["Infrastructure deliverable"]
+        RAv1[pkg/provenance RAv1]
+        SPEC[SPEC.md]
+    end
+
+    subgraph CLI["cmd/rationalgo"]
+        SPIKE[spike algorand / provenance / x402]
         SERVE[serve]
     end
 
     subgraph Backend["Go backend"]
-        CFG[config]
-        DEC[decision.Hash]
-        ALG[algorand.Service]
+        CAT[catalog + vendor]
+        REASON[reasoning]
+        POL[policy]
+        OUT[outcome]
+        SCEN[scenario/hero]
+        ALG[algorand.Client]
         X402[x402.Service]
         API[api.Server]
-        REPO[(repository.Store)]
+        STORE[(repository.Store)]
     end
 
-    subgraph Chain["External"]
+    subgraph External["External"]
         TN[Algorand Testnet]
-        GP[GoPlausible x402 demo]
+        GP[GoPlausible x402]
     end
 
     subgraph UI["React dashboard"]
-        FE[index.tsx + reducer]
+        FE[index.tsx]
     end
 
-    STATUS --> CFG
+    RAv1 --> ALG
     SPIKE --> ALG --> TN
     SPIKE --> X402 --> GP
-    ALG --> DEC
-    SERVE --> API --> REPO
+    SERVE --> API --> SCEN
+    SCEN --> REASON --> POL
+    SCEN --> ALG
+    SCEN --> X402
+    SCEN --> STORE
+    CAT --> REASON
     FE -->|GET /api/state| API
+    FE -.->|POST /api/scenario/run SSE — pending| API
 ```
 
-Two entry paths share the same services:
+### Provenance on-chain (judge story)
 
-1. **CLI spikes (Phase 0)** — prove integrations work in isolation before wiring the hero demo.
-2. **HTTP API (Phase 1)** — serve dashboard state to the React UI over REST.
+Every approved spend writes **two** Algorand transactions:
 
-The hero demo flow (agent → policy → commit → pay → anomaly) is **not orchestrated yet**. The dashboard still runs a **client-side scripted demo** via `setTimeout`; the backend serves **static seed data** that mirrors that mock.
+1. **Pre-payment** — note: `RAv1:<base64url(JSON)>` (reasoning before spend)
+2. **Post-outcome** — note: `RAv1out:<base64url(JSON)>` (links actual result to original tx)
 
----
+Query via Algorand Indexer: `note-prefix=RAv1:` — no app database required.
 
-### Backend: CLI (`cmd/rationalgo/main.go`)
-
-Thin dispatcher. Loads config, then routes by subcommand:
-
-| Command | What it does |
-|---------|----------------|
-| *(no args)* / `status` | Print config summary and whether spikes are ready |
-| `spike algorand` | Hash a sample decision JSON → commit on testnet |
-| `spike x402` | Unpaid GET to GoPlausible → expect HTTP 402 |
-| `spike all` | Both spikes in sequence |
-| `serve` | Start HTTP API on `RATIONALGO_HTTP_ADDR` (default `:8080`) |
-
-No business logic lives in `main.go`; it delegates to services and `api.Server`.
-
----
-
-### Backend: configuration (`internal/config/`)
-
-**`env.go`** — loads `backend/.env` via `godotenv` (looks for `.env` in cwd or `backend/.env`).
-
-**`config.go`** — maps env vars to a `Config` struct. Key validations:
-
-- `RATIONALGO_WALLET_ADDRESS` must be set (not the placeholder string).
-- `RATIONALGO_MNEMONIC` must be non-empty and **exactly 25 space-separated words** (Algorand SDK requirement).
-- On spike, the address derived from the mnemonic must match `RATIONALGO_WALLET_ADDRESS`.
-
-Public AlgoNode testnet works with an empty `RATIONALGO_ALGOD_TOKEN`.
-
----
-
-### Backend: decision hashing (`internal/services/decision/hash.go`)
-
-```go
-HashCanonicalJSON(v any) → SHA-256 hex string
-```
-
-Marshals any struct/map to JSON, hashes with SHA-256, returns hex digest. This is the **reasoning hash** that will eventually be committed on-chain for every agent purchase decision.
-
-Used today by the Algorand spike with a sample payload:
-
-```json
-{"project":"RationAlgo","phase":0,"intent":"spike: weather data purchase reasoning","timestamp":"..."}
-```
-
----
-
-### Backend: Algorand integration (`internal/services/algorand/`)
-
-**`client.go`** — low-level testnet operations:
-
-1. Connect to Algod (`RATIONALGO_ALGOD_URL`).
-2. Derive signing key from mnemonic; verify address matches config.
-3. **`CommitHash(hash)`** — submits a **0-ALGO self-payment** with transaction note:
-   ```
-   RationAlgo:commit:<reasoning_hash>
-   ```
-4. Signs, broadcasts, waits for confirmation (4 rounds), returns `tx_id`.
-
-This is intentionally minimal: no smart contract, no app call — just an on-chain timestamped note proving the hash existed before spend.
-
-**`service.go`** — orchestrates the spike:
-
-1. Fetch account balance.
-2. Build sample decision map → `decision.HashCanonicalJSON`.
-3. Call `client.CommitHash`.
-4. Return `AlgorandSpikeResult` (address, balance, hash, tx_id, explorer URL).
-
----
-
-### Backend: x402 integration (`internal/services/x402/service.go`)
-
-**Phase 0 scope:** probe only, no payment.
-
-1. `GET` to `RATIONALGO_X402_PROBE_URL` (default: `https://example.x402.goplausible.xyz/avm/weather`).
-2. Without an `X-PAYMENT` header, the server responds **402 Payment Required**.
-3. Reads `PAYMENT-REQUIRED` (or `X-PAYMENT-REQUIRED`) header containing payment requirements JSON.
-
-**Phase 2** will parse that header, sign an Algorand payment (EURQ ASA), attach `X-PAYMENT`, and retry for the protected resource.
-
----
-
-### Backend: HTTP API (`internal/api/server.go`)
-
-Phase 1 REST layer over in-memory state:
-
-| Method | Path | Handler |
-|--------|------|---------|
-| GET | `/health` | `{"status":"ok","phase":"1"}` |
-| GET | `/api/state` | Full `AppState` JSON |
-| POST | `/api/state/reset` | Reset store to seed data, return state |
-
-CORS is enabled (`Access-Control-Allow-Origin: *`) so the Vite dev server can call the API from a different port.
-
-**`internal/store/seed.go`** — hard-coded demo decisions/vendors/alerts matching the frontend mock.
-
-**`internal/repository/store.go`** — thread-safe wrapper with `State()`, `Reset()`, `AddDecision()`, `UpdateDecision()` (the mutation methods are ready for Phase 3 but unused by HTTP handlers yet).
-
----
-
-### Frontend: dashboard (`frontend/src/`)
-
-**State model** — `lib/rationale/types.ts` defines `Decision`, `AppState`, etc. Mirrors backend `models/decision.go`.
-
-**Initial data** — `lib/rationale/mock.ts` seeds 4 historical decisions (approved/blocked examples).
-
-**Reducer** — `lib/rationale/reducer.ts` handles UI actions:
-
-- `HYDRATE` — replace state from API response
-- `ADD_DECISION`, `UPDATE_DECISION`, `SET_OUTCOME` — demo scenario steps
-- `SPEND`, `ADJUST_TRUST`, `ADD_ALERT`, `SELECT`, `RESET`
-
-**API client** — `lib/rationale/api.ts`:
-
-- On mount, `index.tsx` calls `GET {VITE_API_URL}/api/state` (default `http://localhost:8080`).
-- Success → `HYDRATE` + **api live** badge in top bar.
-- Failure → falls back to local mock (no badge).
-
-**Demo scenario** — `lib/rationale/demoScenario.ts` runs a ~7s scripted flow via `setTimeout`:
-
-1. WeatherAPI purchase appears as PENDING → APPROVED
-2. Outcome recorded (+23% predicted vs +25% actual)
-3. MetricsHub.xyz blocked (price anomaly)
-
-This is still **100% client-side**. The backend does not receive demo events yet.
-
-**UI components** — `components/rationale/`:
-
-- `DecisionFeed` / `DecisionCard` — scrollable audit log
-- `DecisionDrawer` — full reasoning, alternatives, policy checks, on-chain hash
-- `PolicyPanel` — daily limit, allow/block lists, alerts
-- `VendorTrustPanel` — vendor scores
-
----
-
-### Data flow today
-
-**Spike path (Phase 0):**
-
-```
-CLI spike algorand
-  → algorand.Service.RunSpike()
-    → decision.HashCanonicalJSON(sample)
-    → algorand.Client.CommitHash(hash)
-      → 0-ALGO txn with note on Testnet
-    → print tx_id + explorer link
-```
-
-**Dashboard path (Phase 1):**
-
-```
-browser loads /
-  → fetch GET /api/state
-  → repository.Store.State() (seed data)
-  → reducer HYDRATE
-  → render feed + panels
-
-user clicks "run demo scenario"
-  → demoScenario.ts timers
-  → local reducer only (backend unchanged)
-```
-
----
-
-### What is not built yet
-
-| Planned | Package / location | Hero demo step |
-|---------|-------------------|----------------|
-| Policy engine | `services/policy/` (TBD) | Evaluate allowlist, budget, anomaly |
-| Agent vendor picker | `services/agent/` (TBD) | Compare WeatherAPI A/B/Free |
-| x402 payment | extend `services/x402/` | EURQ pay after 402 |
-| Hero orchestrator | `scenario/` or API handler | Wire all steps + persist to store |
-| Live on-chain commits per decision | extend `algorand.Service` | Hash each real decision, not spike sample |
-
-Target architecture (end state):
-
-```mermaid
-flowchart TB
-    UI[React Dashboard] -->|REST| API[Go API :8080]
-    API --> Scenario[scenario.RunHeroDemo]
-    Scenario --> Agent[agent.EvaluateVendors]
-    Scenario --> Decision[decision.Hash]
-    Scenario --> Policy[policy.Evaluate]
-    Policy -->|approved| Algorand[algorand.CommitHash]
-    Policy -->|approved| X402[x402.PayAndFetch]
-    Decision --> Store[(In-Memory Store)]
-    Algorand --> Store
-    Algorand -.-> Testnet[Algorand Testnet]
-```
+Legacy Phase 0 spike still uses `RationAlgo:commit:<hash>` via `CommitHash`; new code uses `CommitProvenance` / `CommitOutcome`.
 
 ---
 
@@ -289,11 +133,19 @@ flowchart TB
 ```bash
 cd backend
 cp .env.example .env
-# edit .env — see Environment variables below
+# edit .env — wallet address + mnemonic (see below)
 go build -o bin/rationalgo ./cmd/rationalgo
 go run ./cmd/rationalgo              # config status
 go run ./cmd/rationalgo spike all    # integration spikes
-go run ./cmd/rationalgo serve        # HTTP API
+go run ./cmd/rationalgo serve        # HTTP API :8080
+```
+
+### Provenance package (no wallet needed)
+
+```bash
+cd backend
+go test ./pkg/provenance/...
+go run ./pkg/provenance/example
 ```
 
 ### Frontend
@@ -302,71 +154,119 @@ go run ./cmd/rationalgo serve        # HTTP API
 cd frontend
 bun install
 bun run dev
-# optional: VITE_API_URL=http://localhost:8080
 ```
 
 With `serve` running, the dashboard top bar shows **api live**.
 
 ---
 
-## Phase 0 — Integration spikes
+## CLI commands
+
+| Command | Purpose |
+|---------|---------|
+| `go run ./cmd/rationalgo` | Config status + spike readiness |
+| `go run ./cmd/rationalgo serve` | Start HTTP API |
+| `go run ./cmd/rationalgo spike algorand` | Legacy hash commit (`RationAlgo:commit:…`) |
+| `go run ./cmd/rationalgo spike provenance` | RAv1 envelope commit on testnet |
+| `go run ./cmd/rationalgo spike x402` | Unpaid 402 probe |
+| `go run ./cmd/rationalgo spike x402 pay` | Probe + stub fetch (real EURQ next) |
+| `go run ./cmd/rationalgo spike all` | All spikes in sequence |
+
+---
+
+## HTTP API
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/health` | Liveness (`{"status":"ok","phase":"2"}`) |
+| GET | `/api/state` | Full dashboard state |
+| GET | `/api/decisions` | Decision feed only |
+| POST | `/api/state/reset` | Reset to seed data |
+| POST | `/api/scenario/run` | SSE stream — normal hero demo |
+| POST | `/api/scenario/run?scenario=anomaly` | SSE stream — blocked purchase demo |
+
+CORS enabled for local frontend dev (`Access-Control-Allow-Origin: *`).
+
+---
+
+## Wallet setup
 
 Edit `backend/.env`:
 
 ```env
 RATIONALGO_WALLET_ADDRESS=<58-char Pera testnet address>
-RATIONALGO_MNEMONIC=<25 words, space-separated, same account>
+RATIONALGO_MNEMONIC=<24 or 25 words, space-separated, same account>
 RATIONALGO_ALGOD_TOKEN=          # leave empty for public AlgoNode
 ```
 
-Fund the account on the [Algorand Testnet dispenser](https://bank.testnet.algorand.network/) if balance is low.
+**Mnemonic notes:**
 
-```bash
-go run ./cmd/rationalgo spike algorand   # testnet hash commitment
-go run ./cmd/rationalgo spike x402       # GoPlausible 402 probe
-```
+- Algorand uses **25 words**; word 25 is a checksum derived from the first 24.
+- Pera often displays **24 words** — RationAlgo auto-derives the checksum (`internal/util/mnemonic.go`).
+- The passphrase must be the **Algorand recovery phrase** from Pera → Settings → Security (not a BIP-39 seed from another chain).
+- The address derived from the mnemonic must match `RATIONALGO_WALLET_ADDRESS`.
 
-**Exit criteria**
+Fund via the [Algorand Testnet dispenser](https://bank.testnet.algorand.network/) if balance is low.
 
-- [x] `spike x402` → HTTP 402 + `PAYMENT-REQUIRED` header
-- [ ] `spike algorand` → real `tx_id` + [Pera Explorer](https://testnet.explorer.perawallet.app) link
-
-**Troubleshooting**
+### Troubleshooting
 
 | Error | Fix |
 |-------|-----|
-| `mnemonic must be 25 words` | Copy all 25 words from Pera (not 12/24-word BIP39 seeds) |
-| `mnemonic address … does not match` | Mnemonic and wallet address must be from the **same** Pera account |
+| `mnemonic must be 24 or 25 Algorand words` | Paste the full Pera recovery phrase |
+| `not a valid Algorand recovery phrase` | Wrong words or non-Algorand seed — re-export from Pera |
+| `mnemonic address … does not match` | Mnemonic and address must be the **same** account |
 | `account info: …` / insufficient balance | Fund via testnet dispenser |
-| x402 returns 404 | Use `/avm/weather` not `/api/json` (endpoint moved) |
+| x402 returns 404 | Use `/avm/weather` not `/api/json` |
 
 ---
 
-## Phase 1 — HTTP API + dashboard wiring
+## How the codebase works
 
-```bash
-go run ./cmd/rationalgo serve
-curl http://localhost:8080/health
-curl http://localhost:8080/api/state
+### `pkg/provenance/` — RAv1 standard
+
+Stdlib-only package. `Encode` / `Decode` for pre-payment envelopes; `EncodeOutcome` / `DecodeOutcome` for post-outcome. Used by `algorand.Client.CommitProvenance` and `CommitOutcome`.
+
+### `internal/catalog/` — vendor registry
+
+Hard-coded MVP catalog (`WeatherPro`, `GoPlausible Weather`, `OpenMeteo`, routing/fuel/traffic vendors). `services/vendor/` adapts catalog entries to `models.VendorOption` and supplies price history for anomaly detection.
+
+### `internal/scenario/hero.go` — orchestrator
+
+Runs normal or anomaly demo with 600ms delays between SSE events:
+
+```
+agent.thinking → decision.pending → [policy]
+  → approved: decision.committed → payment.sent → decision.outcome → store
+  → blocked:  decision.blocked → alert.fired → store (no chain, no x402)
 ```
 
-**Exit criteria**
+### Services (stubs → real logic)
 
-- [x] `/health` returns `{"status":"ok","phase":"1"}`
-- [x] `/api/state` returns JSON with `decisions` array
-- [x] Dashboard shows **api live** when backend is running
+| Service | Role |
+|---------|------|
+| `reasoning` | Picks best vendor for Frankfurt weather task; builds `DecisionRecord` |
+| `policy` | Budget, allowlist, 5× price anomaly |
+| `outcome` | Verifies paid forecast vs simulated OpenMeteo ground truth |
+| `x402` | `RunProbe` + `PayAndFetch` stub (real EURQ signing next) |
+| `algorand` | `CommitHash`, `CommitProvenance`, `CommitOutcome` via 0-ALGO self-payments |
+
+### Frontend
+
+- Loads seed/historical state from `GET /api/state` on mount.
+- **Run demo scenario** still uses client-side `demoScenario.ts` timers — wire to `POST /api/scenario/run` SSE next.
 
 ---
 
 ## Roadmap
 
-| Phase | Deliverable |
-|-------|-------------|
-| **0** | Prove Algorand hash commit + x402 402 probe |
-| **1** | HTTP API serves dashboard state; frontend hydrates from API |
-| **2** | x402 paid flow (EURQ on Algorand testnet) |
-| **3** | Policy engine + hero demo orchestration via API |
-| **4** | On-chain commit + outcome tracking wired into live demo |
+| Milestone | Deliverable | Status |
+|-----------|-------------|--------|
+| **0** | Algorand + x402 integration spikes | ✅ probe; ⚠️ on-chain needs valid wallet |
+| **1** | HTTP API + dashboard hydration | ✅ |
+| **Infra** | `pkg/provenance/` RAv1 + SPEC | ✅ |
+| **2** | Catalog, services, hero orchestrator, SSE API | ✅ |
+| **3** | Real EURQ `PayAndFetch` | 🔜 |
+| **4** | Frontend scenario SSE + live demo UI | 🔜 |
 
 ---
 
@@ -375,7 +275,7 @@ curl http://localhost:8080/api/state
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `RATIONALGO_WALLET_ADDRESS` | Yes (spikes) | 58-character Pera Testnet address |
-| `RATIONALGO_MNEMONIC` | Yes (spikes) | 25-word Algorand passphrase (same account) |
+| `RATIONALGO_MNEMONIC` | Yes (spikes) | 24- or 25-word Algorand passphrase (same account) |
 | `RATIONALGO_ALGOD_TOKEN` | No | Empty for public AlgoNode testnet |
 | `RATIONALGO_ALGOD_URL` | No | Default: `https://testnet-api.algonode.cloud` |
 | `RATIONALGO_X402_PROBE_URL` | No | Default: `…/avm/weather` |
@@ -384,21 +284,6 @@ curl http://localhost:8080/api/state
 | `VITE_USE_API` | No | Set to `false` to skip API and use local mock only |
 
 Never commit `backend/.env`.
-
----
-
-## Hackathon demo (hero flow — target)
-
-1. Agent needs weather data → evaluates vendors
-2. Decision Record generated with reasoning
-3. Policy engine approves
-4. Reasoning hash committed on Algorand
-5. x402 payment in EURQ
-6. Vendor price spikes 10×
-7. Policy flags anomaly → purchase rejected
-8. Dashboard shows audit trail + trust scores
-
-Steps 1–3 and 6–8 have UI mock coverage. Steps 4–5 need Phases 2–3 backend work.
 
 ---
 

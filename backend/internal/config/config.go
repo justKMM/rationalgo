@@ -55,11 +55,11 @@ func (c Config) ValidateForSpike() error {
 		return fmt.Errorf("set RATIONALGO_WALLET_ADDRESS in backend/.env (your Pera Testnet address)")
 	}
 	if c.Mnemonic == "" {
-		return fmt.Errorf("set RATIONALGO_MNEMONIC in backend/.env (25-word passphrase from Pera)")
+		return fmt.Errorf("set RATIONALGO_MNEMONIC in backend/.env (24- or 25-word passphrase from Pera)")
 	}
 	words := len(strings.Fields(c.Mnemonic))
-	if words != 25 {
-		return fmt.Errorf("RATIONALGO_MNEMONIC must be exactly 25 words (got %d) — copy the full passphrase from Pera → Settings → Security", words)
+	if words != 24 && words != 25 {
+		return fmt.Errorf("RATIONALGO_MNEMONIC must be 24 or 25 Algorand words (got %d) — copy the passphrase from Pera → Settings → Security", words)
 	}
 	return nil
 }

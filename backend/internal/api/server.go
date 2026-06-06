@@ -11,24 +11,32 @@ import (
 
 	"rationalgo/internal/config"
 	"rationalgo/internal/repository"
+	"rationalgo/internal/scenario"
+	"rationalgo/internal/services/algorand"
+	"rationalgo/internal/services/outcome"
 	"rationalgo/internal/services/policy"
 	"rationalgo/internal/services/reasoning"
+	"rationalgo/internal/services/vendor"
 	vendorsvc "rationalgo/internal/services/vendor"
+	"rationalgo/internal/services/x402"
 )
 
 // Server is the HTTP API for the audit dashboard.
 type Server struct {
 	cfg          config.Config
 	store        *repository.Store
+	deps         scenario.Deps
 	reasoningSvc *reasoning.Service
 	mux          *http.ServeMux
 }
 
 // NewServer creates an API server with seeded in-memory state.
 func NewServer(cfg config.Config, reasoningSvc *reasoning.Service) *Server {
+	store := repository.NewStore()
 	s := &Server{
 		cfg:          cfg,
-		store:        repository.NewStore(),
+		store:        store,
+		deps:         buildDeps(cfg, store),
 		reasoningSvc: reasoningSvc,
 		mux:          http.NewServeMux(),
 	}
@@ -36,11 +44,39 @@ func NewServer(cfg config.Config, reasoningSvc *reasoning.Service) *Server {
 	return s
 }
 
+func buildDeps(cfg config.Config, store *repository.Store) scenario.Deps {
+	vendors := vendor.NewService()
+	state := store.State()
+
+	var algClient scenario.AlgorandCommitter
+	if client, err := algorand.NewClient(cfg); err == nil {
+		algClient = client
+	}
+
+	return scenario.Deps{
+		Reasoning:  reasoning.NewService(),
+		Outcome:    outcome.NewService(),
+		Algorand:   algClient,
+		X402:       x402.NewService(cfg),
+		Store:      store,
+		Vendors:    vendors.GetDemoWeatherVendors,
+		Policy:     policy.Evaluate,
+		Allowed:    func() []string { return state.AllowedVendors },
+		PriceHist:  vendors.GetPriceHistory,
+		Inject:     policy.InjectAnomalyPrice,
+		AgentID:    state.Agent,
+		DailySpent: state.Spent,
+		DailyLimit: state.DailyLimit,
+	}
+}
+
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /health", s.handleHealth)
 	s.mux.HandleFunc("GET /api/state", s.handleState)
+	s.mux.HandleFunc("GET /api/decisions", s.handleDecisions)
 	s.mux.HandleFunc("POST /api/state/reset", s.handleReset)
 	s.mux.HandleFunc("POST /api/decide", s.handleDecide)
+	s.mux.HandleFunc("POST /api/scenario/run", s.handleScenarioRun)
 }
 
 // ListenAndServe starts the HTTP server with CORS for local frontend dev.
@@ -66,7 +102,7 @@ func (s *Server) withCORS(next http.Handler) http.Handler {
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{
 		"status": "ok",
-		"phase":  "1",
+		"phase":  "2",
 	})
 }
 
@@ -74,9 +110,46 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.store.State())
 }
 
+func (s *Server) handleDecisions(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.store.State().Decisions)
+}
+
 func (s *Server) handleReset(w http.ResponseWriter, r *http.Request) {
 	s.store.Reset()
+	s.deps = buildDeps(s.cfg, s.store)
 	writeJSON(w, http.StatusOK, s.store.State())
+}
+
+func (s *Server) handleScenarioRun(w http.ResponseWriter, r *http.Request) {
+	scenarioType := scenario.ScenarioNormal
+	if r.URL.Query().Get("scenario") == "anomaly" {
+		scenarioType = scenario.ScenarioAnomaly
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	events, err := scenario.Run(r.Context(), scenarioType, s.deps)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	for event := range events {
+		data, err := json.Marshal(event)
+		if err != nil {
+			continue
+		}
+		fmt.Fprintf(w, "event: message\ndata: %s\n\n", data)
+		flusher.Flush()
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

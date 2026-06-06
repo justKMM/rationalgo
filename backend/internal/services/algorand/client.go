@@ -11,6 +11,8 @@ import (
 	"github.com/algorand/go-algorand-sdk/v2/transaction"
 
 	"rationalgo/internal/config"
+	"rationalgo/internal/util"
+	"rationalgo/pkg/provenance"
 )
 
 // Client wraps testnet Algod access and transaction signing.
@@ -30,7 +32,12 @@ func NewClient(cfg config.Config) (*Client, error) {
 		return nil, fmt.Errorf("algod client: %w", err)
 	}
 
-	sk, err := mnemonic.ToPrivateKey(cfg.Mnemonic)
+	normalized, err := util.NormalizeMnemonic(cfg.Mnemonic)
+	if err != nil {
+		return nil, fmt.Errorf("mnemonic: %w", err)
+	}
+
+	sk, err := mnemonic.ToPrivateKey(normalized)
 	if err != nil {
 		return nil, fmt.Errorf("mnemonic: %w", err)
 	}
@@ -62,14 +69,36 @@ func (c *Client) AccountInfo() (models.Account, error) {
 
 // CommitHash submits a 0-ALGO self-payment with a note carrying the reasoning hash.
 func (c *Client) CommitHash(reasoningHash string) (string, error) {
+	note := []byte("RationAlgo:commit:" + reasoningHash)
+	return c.commitNote(note)
+}
+
+// CommitProvenance submits a 0-ALGO self-payment with an RAv1 envelope note.
+func (c *Client) CommitProvenance(env *provenance.Envelope) (string, error) {
+	noteStr, err := provenance.Encode(env)
+	if err != nil {
+		return "", fmt.Errorf("algorand: commit provenance: %w", err)
+	}
+	return c.commitNote([]byte(noteStr))
+}
+
+// CommitOutcome submits a 0-ALGO self-payment with an RAv1out envelope note.
+func (c *Client) CommitOutcome(env *provenance.OutcomeEnvelope) (string, error) {
+	noteStr, err := provenance.EncodeOutcome(env)
+	if err != nil {
+		return "", fmt.Errorf("algorand: commit outcome: %w", err)
+	}
+	return c.commitNote([]byte(noteStr))
+}
+
+func (c *Client) commitNote(note []byte) (string, error) {
+	if len(note) > 1000 {
+		return "", fmt.Errorf("note too long (%d bytes); max 1000", len(note))
+	}
+
 	params, err := c.algod.SuggestedParams().Do(context.Background())
 	if err != nil {
 		return "", fmt.Errorf("suggested params: %w", err)
-	}
-
-	note := []byte("RationAlgo:commit:" + reasoningHash)
-	if len(note) > 1000 {
-		return "", fmt.Errorf("note too long (%d bytes); max 1000", len(note))
 	}
 
 	addr := c.account.Address.String()
