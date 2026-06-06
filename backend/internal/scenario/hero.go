@@ -174,8 +174,8 @@ func runScenario(ctx context.Context, scenario ScenarioType, deps Deps, ch chan<
 			emit(EventPaymentSent, map[string]interface{}{
 				"vendor": record.VendorChosen.Name,
 				"amount": record.VendorChosen.PriceEURQ,
-				"bytes":   len(body),
-				"stub":    true,
+				"bytes":  len(body),
+				"paid":   true,
 			})
 		}
 	}

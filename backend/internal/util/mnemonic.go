@@ -6,23 +6,42 @@ import (
 	"strings"
 
 	"github.com/algorand/go-algorand-sdk/v2/mnemonic"
+	"github.com/tyler-smith/go-bip39"
 )
 
 //go:embed algorand_wordlist.txt
 var algorandWordlistRaw string
 
-var algorandWordlist = strings.Split(strings.TrimSpace(algorandWordlistRaw), "\n")
+var algorandWordlist = func() []string {
+	lines := strings.Split(strings.TrimSpace(algorandWordlistRaw), "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		w := strings.TrimSpace(line)
+		if w != "" {
+			out = append(out, w)
+		}
+	}
+	return out
+}()
 
 // NormalizeMnemonic accepts a 24- or 25-word Algorand passphrase.
-// Pera often displays 24 words (key material only); the 25th checksum word is derived automatically.
+// Pera displays 24 words; the 25th checksum word is derived automatically.
+// If you already have 25 words, pass them as-is.
 func NormalizeMnemonic(raw string) (string, error) {
-	words := strings.Fields(strings.TrimSpace(raw))
+	raw = strings.TrimSpace(raw)
+	raw = strings.Trim(raw, `"'`)
+	words := strings.Fields(raw)
+	for i := range words {
+		words[i] = strings.ToLower(strings.Trim(words[i], `"'`))
+	}
+
 	switch len(words) {
 	case 25:
-		if _, err := mnemonic.ToKey(strings.Join(words, " ")); err != nil {
+		phrase := strings.Join(words, " ")
+		if _, err := mnemonic.ToKey(phrase); err != nil {
 			return "", fmt.Errorf("mnemonic: invalid 25-word passphrase: %w", err)
 		}
-		return strings.Join(words, " "), nil
+		return phrase, nil
 	case 24:
 		return complete24WordMnemonic(words)
 	default:
@@ -45,7 +64,27 @@ func complete24WordMnemonic(words []string) (string, error) {
 			return candidate, nil
 		}
 	}
-	return "", fmt.Errorf("24-word passphrase is not a valid Algorand recovery phrase")
+
+	return "", invalid24WordMnemonicError(strings.Join(words, " "))
+}
+
+func invalid24WordMnemonicError(phrase string) error {
+	if bip39.IsMnemonicValid(phrase) {
+		return fmt.Errorf(
+			"valid BIP39 seed phrase, but it did not derive your RATIONALGO_WALLET_ADDRESS — " +
+				"confirm the wallet address and passphrase are from the same Pera account",
+		)
+	}
+	return fmt.Errorf(
+		"24-word passphrase is not a valid Algorand recovery phrase — " +
+			"the 25th checksum word is derived automatically from your 24 words, but these did not validate. " +
+			"Re-copy from Pera → Settings → Security and check for typos or wrong word order",
+	)
+}
+
+// AlgorandWordlist is the 2048-word Algorand passphrase dictionary.
+func AlgorandWordlist() []string {
+	return algorandWordlist
 }
 
 func wordIndex(word string) int {

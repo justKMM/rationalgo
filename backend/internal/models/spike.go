@@ -17,3 +17,10 @@ type X402ProbeResult struct {
 	PaymentHeader   string
 	BodySnippet     string
 }
+
+// X402PayResult captures a completed x402 payment fetch.
+type X402PayResult struct {
+	URL          string
+	Body         []byte
+	SettlementTx string
+}

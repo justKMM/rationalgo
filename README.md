@@ -16,7 +16,7 @@ Built for the [Algorand x402 Agentic Commerce Hackathon](https://luma.com/agenti
 |-----------|--------|-------|
 | `pkg/provenance/` (RAv1) | ✅ | Encode/decode, tests, SPEC, standalone example |
 | x402 probe (`spike x402`) | ✅ | HTTP 402 from GoPlausible `/avm/weather` |
-| x402 pay stub (`spike x402 pay`) | ✅ | Probe + demo JSON (real EURQ payment next) |
+| x402 pay (`spike x402 pay`) | ✅ | Real ASA payment via GoPlausible facilitator (testnet or mainnet) |
 | Algorand legacy spike (`spike algorand`) | ⚠️ | Needs valid Pera **Algorand** passphrase + funded wallet |
 | RAv1 spike (`spike provenance`) | ⚠️ | Same wallet requirement; commits `RAv1:` envelope |
 | Vendor catalog | ✅ | `internal/catalog/` + `services/vendor/` adapter |
@@ -24,7 +24,7 @@ Built for the [Algorand x402 Agentic Commerce Hackathon](https://luma.com/agenti
 | Hero orchestrator | ✅ | `scenario/hero.go` — normal + anomaly flows |
 | HTTP API | ✅ | State, decisions, scenario SSE stream |
 | Dashboard → API | ✅ | Hydrates from `GET /api/state`; demo still client-side |
-| Real EURQ `PayAndFetch` | 🔜 | Parse `PAYMENT-REQUIRED`, sign ASA, retry |
+| Real EURQ `PayAndFetch` | ✅ | GoPlausible x402 v2 — ASA transfer + facilitator settlement |
 | Frontend → scenario SSE | 🔜 | Replace `demoScenario.ts` timers with backend stream |
 
 ---
@@ -171,7 +171,7 @@ With `serve` running, the dashboard top bar shows **api live**.
 | `go run ./cmd/rationalgo spike algorand` | Legacy hash commit (`RationAlgo:commit:…`) |
 | `go run ./cmd/rationalgo spike provenance` | RAv1 envelope commit on testnet |
 | `go run ./cmd/rationalgo spike x402` | Unpaid 402 probe |
-| `go run ./cmd/rationalgo spike x402 pay` | Probe + stub fetch (real EURQ next) |
+| `go run ./cmd/rationalgo spike x402 pay` | Real payment + fetch via GoPlausible facilitator |
 | `go run ./cmd/rationalgo spike all` | All spikes in sequence |
 
 ---
@@ -220,6 +220,8 @@ Fund via the [Algorand Testnet dispenser](https://bank.testnet.algorand.network/
 | `mnemonic address … does not match` | Mnemonic and address must be the **same** account |
 | `account info: …` / insufficient balance | Fund via testnet dispenser |
 | x402 returns 404 | Use `/avm/weather` not `/api/json` |
+| x402 pay fails: wallet required | Set `RATIONALGO_WALLET_ADDRESS` + `RATIONALGO_MNEMONIC` in `.env` |
+| x402 pay fails: insufficient ASA | Opt-in + fund testnet USDC ASA `10458941` (0.001 = 1000 units). Mainnet USDC is ASA `31566704` — point `RATIONALGO_ALGOD_URL` at mainnet |
 | `listen tcp :8080: bind: … address already in use` | Stop the old server (**Ctrl+C**) or kill the stale process: `netstat -ano \| findstr :8080` then `taskkill /PID <pid> /F`. Or set `RATIONALGO_HTTP_ADDR=:8081` in `.env`. |
 | `RATIONALGO_ANTHROPIC_KEY not set` | Harmless for hero demo and spikes; required only for `POST /api/decide` |
 
@@ -252,7 +254,7 @@ agent.thinking → decision.pending → [policy]
 | `reasoning` | `GenerateDemoDecision` — deterministic hero path (no API key). `GenerateDecision` — Anthropic LLM for `POST /api/decide` |
 | `policy` | Budget, allowlist, 5× price anomaly (`services/policy/service.go`) |
 | `outcome` | Verifies paid forecast vs simulated OpenMeteo ground truth |
-| `x402` | `RunProbe` + `PayAndFetch` stub (real EURQ signing next) |
+| `x402` | `RunProbe` + real `PayAndFetch` via GoPlausible (402 → sign → settle → 200) |
 | `algorand` | `CommitHash`, `CommitProvenance`, `CommitOutcome` via 0-ALGO self-payments |
 
 ### Frontend
@@ -270,7 +272,7 @@ agent.thinking → decision.pending → [policy]
 | **1** | HTTP API + dashboard hydration | ✅ |
 | **Infra** | `pkg/provenance/` RAv1 + SPEC | ✅ |
 | **2** | Catalog, services, hero orchestrator, SSE API | ✅ |
-| **3** | Real EURQ `PayAndFetch` | 🔜 |
+| **3** | Real EURQ `PayAndFetch` | ✅ |
 | **4** | Frontend scenario SSE + live demo UI | 🔜 |
 
 ---

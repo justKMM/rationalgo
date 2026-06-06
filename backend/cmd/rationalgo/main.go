@@ -135,18 +135,22 @@ func spikeX402(cfg config.Config, args []string) {
 	if result.BodySnippet != "" {
 		fmt.Printf("body:        %s\n", result.BodySnippet)
 	}
-	fmt.Println("ok: x402 probe complete (use spike x402 pay for stub fetch)")
+	fmt.Println("ok: x402 probe complete (use spike x402 pay for real payment)")
 }
 
 func spikeX402Pay(cfg config.Config) {
-	fmt.Println("=== x402 spike (pay stub) ===")
-	body, err := x402svc.NewService(cfg).PayAndFetch(context.Background(), cfg.X402ProbeURL, 0.001)
+	fmt.Println("=== x402 spike (real payment via GoPlausible) ===")
+	svc := x402svc.NewService(cfg)
+	body, err := svc.PayAndFetch(context.Background(), cfg.X402ProbeURL, 0.001)
 	if err != nil {
 		fail(err)
 	}
-	fmt.Printf("url:    %s\n", cfg.X402ProbeURL)
-	fmt.Printf("body:   %s\n", string(body))
-	fmt.Println("ok: x402 pay stub complete (real EURQ payment in Phase 2)")
+	fmt.Printf("url:           %s\n", cfg.X402ProbeURL)
+	fmt.Printf("body:          %s\n", string(body))
+	if tx := svc.LastSettlementTx(); tx != "" {
+		fmt.Printf("settlement_tx: %s\n", tx)
+	}
+	fmt.Println("ok: x402 payment settled — resource returned")
 }
 
 func printStatus(cfg config.Config) {
