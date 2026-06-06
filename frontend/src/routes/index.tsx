@@ -8,6 +8,7 @@ import { VendorTrustPanel } from "@/components/rationale/VendorTrustPanel";
 import { reducer } from "@/lib/rationale/reducer";
 import { initialState } from "@/lib/rationale/mock";
 import { runDemo } from "@/lib/rationale/demoScenario";
+import { fetchState, isApiConfigured } from "@/lib/rationale/api";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -26,6 +27,9 @@ export const Route = createFileRoute("/")({
 function RationaleApp() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [running, setRunning] = useState(false);
+  const [apiStatus, setApiStatus] = useState<"loading" | "live" | "mock">(
+    isApiConfigured() ? "loading" : "mock"
+  );
   const timersRef = useRef<number[]>([]);
 
   const clearTimers = useCallback(() => {
@@ -34,6 +38,24 @@ function RationaleApp() {
   }, []);
 
   useEffect(() => clearTimers, [clearTimers]);
+
+  useEffect(() => {
+    if (!isApiConfigured()) return;
+    let cancelled = false;
+    fetchState()
+      .then((remote) => {
+        if (cancelled) return;
+        dispatch({ type: "HYDRATE", state: remote });
+        setApiStatus("live");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setApiStatus("mock");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const onRun = () => {
     if (running) return;
@@ -60,6 +82,7 @@ function RationaleApp() {
         spent={state.spent}
         limit={state.dailyLimit}
         running={running}
+        apiStatus={apiStatus}
         onRun={onRun}
         onReset={onReset}
       />

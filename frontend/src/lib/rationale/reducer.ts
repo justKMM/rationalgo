@@ -2,6 +2,7 @@ import type { AppState, Decision, Alert, Outcome } from "./types";
 import { initialState } from "./mock";
 
 export type Action =
+  | { type: "HYDRATE"; state: AppState }
   | { type: "ADD_DECISION"; decision: Decision; select?: boolean }
   | { type: "UPDATE_DECISION"; id: string; patch: Partial<Decision> }
   | { type: "SET_OUTCOME"; id: string; outcome: Outcome }
@@ -13,6 +14,8 @@ export type Action =
 
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
+    case "HYDRATE":
+      return { ...action.state, selectedId: state.selectedId ?? action.state.selectedId };
     case "ADD_DECISION":
       return {
         ...state,

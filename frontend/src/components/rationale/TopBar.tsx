@@ -7,11 +7,21 @@ interface Props {
   spent: number;
   limit: number;
   running: boolean;
+  apiStatus?: "loading" | "live" | "mock";
   onRun: () => void;
   onReset: () => void;
 }
 
-export function TopBar({ agent, balance, spent, limit, running, onRun, onReset }: Props) {
+export function TopBar({
+  agent,
+  balance,
+  spent,
+  limit,
+  running,
+  apiStatus = "mock",
+  onRun,
+  onReset,
+}: Props) {
   return (
     <header className="flex items-center justify-between border-b border-border bg-surface px-5 h-12">
       <div className="flex items-center gap-5">
@@ -23,6 +33,16 @@ export function TopBar({ agent, balance, spent, limit, running, onRun, onReset }
           <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
             agent decision audit · algorand x402
           </span>
+          {apiStatus === "live" && (
+            <span className="text-[10px] font-mono uppercase tracking-wider text-approved">
+              api live
+            </span>
+          )}
+          {apiStatus === "loading" && (
+            <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+              api…
+            </span>
+          )}
         </div>
         <span className="text-border">|</span>
         <div className="flex items-center gap-2">
