@@ -1,6 +1,7 @@
 package x402
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -55,4 +56,15 @@ func (s *Service) RunProbe() (models.X402ProbeResult, error) {
 		PaymentHeader:   paymentHeader,
 		BodySnippet:     strings.TrimSpace(string(body)),
 	}, nil
+}
+
+// PayAndFetch probes 402 then returns demo payload (real EURQ payment in Phase 2).
+func (s *Service) PayAndFetch(ctx context.Context, url string, amountEURQ float64) ([]byte, error) {
+	_ = ctx
+	if _, err := s.RunProbe(); err != nil {
+		return nil, fmt.Errorf("x402: pay and fetch: probe: %w", err)
+	}
+	_ = url
+	_ = amountEURQ
+	return []byte(`{"precipitation_pct":14.0,"source":"demo-stub-until-phase-2"}`), nil
 }

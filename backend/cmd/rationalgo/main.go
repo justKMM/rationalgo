@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -39,9 +40,10 @@ func main() {
 }
 
 func runServe(cfg config.Config) {
-	fmt.Println("RationAlgo — Phase 1 API")
+	fmt.Println("RationAlgo — Phase 2 API")
 	fmt.Printf("listening:   %s\n", cfg.HTTPAddr)
-	fmt.Println("endpoints:   GET /health  GET /api/state  POST /api/state/reset")
+	fmt.Println("endpoints:   GET /health  GET /api/state  GET /api/decisions")
+	fmt.Println("             POST /api/state/reset  POST /api/scenario/run")
 	fmt.Println()
 	if err := api.NewServer(cfg).ListenAndServe(); err != nil {
 		fail(err)
@@ -57,15 +59,37 @@ func runSpike(cfg config.Config, args []string) {
 	switch target {
 	case "algorand":
 		spikeAlgorand(cfg)
+	case "provenance":
+		spikeProvenance(cfg)
 	case "x402":
-		spikeX402(cfg)
+		spikeX402(cfg, args[1:])
 	case "all":
 		spikeAlgorand(cfg)
 		fmt.Println()
-		spikeX402(cfg)
+		spikeProvenance(cfg)
+		fmt.Println()
+		spikeX402(cfg, nil)
 	default:
-		fail(fmt.Errorf("unknown spike target %q (use algorand, x402, or all)", target))
+		fail(fmt.Errorf("unknown spike target %q (use algorand, provenance, x402, or all)", target))
 	}
+}
+
+func spikeProvenance(cfg config.Config) {
+	fmt.Println("=== Algorand spike (RAv1 provenance) ===")
+	svc, err := algosvc.NewService(cfg)
+	if err != nil {
+		fail(err)
+	}
+	result, err := svc.RunProvenanceSpike()
+	if err != nil {
+		fail(err)
+	}
+	fmt.Printf("wallet:         %s\n", result.Address)
+	fmt.Printf("balance:        %d microAlgos\n", result.MicroAlgos)
+	fmt.Printf("decision_hash:  %s\n", result.ReasoningHash)
+	fmt.Printf("tx_id:          %s\n", result.TxID)
+	fmt.Printf("explorer:       %s\n", result.ExplorerURL)
+	fmt.Println("ok: RAv1 provenance commitment confirmed")
 }
 
 func spikeAlgorand(cfg config.Config) {
@@ -86,7 +110,11 @@ func spikeAlgorand(cfg config.Config) {
 	fmt.Println("ok: testnet commitment confirmed")
 }
 
-func spikeX402(cfg config.Config) {
+func spikeX402(cfg config.Config, args []string) {
+	if len(args) > 0 && args[0] == "pay" {
+		spikeX402Pay(cfg)
+		return
+	}
 	fmt.Println("=== x402 spike (402 probe) ===")
 	result, err := x402svc.NewService(cfg).RunProbe()
 	if err != nil {
@@ -105,11 +133,22 @@ func spikeX402(cfg config.Config) {
 	if result.BodySnippet != "" {
 		fmt.Printf("body:        %s\n", result.BodySnippet)
 	}
-	fmt.Println("ok: x402 probe complete (paid flow lands in Phase 2)")
+	fmt.Println("ok: x402 probe complete (use spike x402 pay for stub fetch)")
+}
+
+func spikeX402Pay(cfg config.Config) {
+	fmt.Println("=== x402 spike (pay stub) ===")
+	body, err := x402svc.NewService(cfg).PayAndFetch(context.Background(), cfg.X402ProbeURL, 0.001)
+	if err != nil {
+		fail(err)
+	}
+	fmt.Printf("url:    %s\n", cfg.X402ProbeURL)
+	fmt.Printf("body:   %s\n", string(body))
+	fmt.Println("ok: x402 pay stub complete (real EURQ payment in Phase 2)")
 }
 
 func printStatus(cfg config.Config) {
-	fmt.Println("RationAlgo — Phase 1")
+	fmt.Println("RationAlgo — Phase 2")
 	fmt.Println()
 	fmt.Printf("wallet:      %s\n", displayWallet(cfg))
 	fmt.Printf("algod:       %s\n", cfg.AlgodURL)
@@ -147,9 +186,11 @@ func printUsage() {
 	fmt.Println(`Usage:
   go run ./cmd/rationalgo                 # config status
   go run ./cmd/rationalgo serve           # HTTP API for dashboard (Phase 1)
-  go run ./cmd/rationalgo spike all       # Algorand commit + x402 probe
-  go run ./cmd/rationalgo spike algorand  # testnet hash commitment only
-  go run ./cmd/rationalgo spike x402      # unpaid 402 probe only
+  go run ./cmd/rationalgo spike all           # hash + RAv1 + x402 probe
+  go run ./cmd/rationalgo spike algorand      # legacy hash commitment
+  go run ./cmd/rationalgo spike provenance    # RAv1 envelope commitment
+  go run ./cmd/rationalgo spike x402          # unpaid 402 probe
+  go run ./cmd/rationalgo spike x402 pay      # probe + stub fetch
 
 Setup:
   cp .env.example .env
