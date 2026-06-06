@@ -102,7 +102,7 @@ func runScenario(ctx context.Context, scenario ScenarioType, deps Deps, ch chan<
 		return
 	}
 
-	record, err := deps.Reasoning.GenerateDecision(ctx, intent, vendors)
+	record, err := deps.Reasoning.GenerateDemoDecision(ctx, intent, vendors)
 	if err != nil {
 		return
 	}
@@ -110,13 +110,13 @@ func runScenario(ctx context.Context, scenario ScenarioType, deps Deps, ch chan<
 
 	priceHist := deps.PriceHist()
 	if scenario == ScenarioAnomaly && deps.Inject != nil {
-		priceHist = deps.Inject(priceHist, record.VendorID, 10)
+		priceHist = deps.Inject(priceHist, record.VendorChosen.ID, 10)
 	}
 
-	chosen := findVendor(vendors, record.VendorID)
+	chosen := findVendor(vendors, record.VendorChosen.ID)
 	policyResult := deps.Policy(
 		chosen,
-		record.AmountEURQ,
+		record.VendorChosen.PriceEURQ,
 		deps.DailySpent,
 		deps.DailyLimit,
 		deps.Allowed(),
@@ -154,8 +154,8 @@ func runScenario(ctx context.Context, scenario ScenarioType, deps Deps, ch chan<
 			SessionID:    fmt.Sprintf("sess-%d", models.NowMillis()),
 			TaskHash:     taskHash,
 			DecisionHash: record.ReasoningHash,
-			Vendor:       record.VendorID,
-			AmountEURQ:   record.AmountEURQ,
+			Vendor:       record.VendorChosen.ID,
+			AmountEURQ:   record.VendorChosen.PriceEURQ,
 			Intent:       record.TaskIntent,
 			Expected:     record.ExpectedValue,
 			Confidence:   record.Confidence,
@@ -169,11 +169,11 @@ func runScenario(ctx context.Context, scenario ScenarioType, deps Deps, ch chan<
 	}
 
 	if deps.X402 != nil {
-		body, err := deps.X402.PayAndFetch(ctx, chosen.URL, record.AmountEURQ)
+		body, err := deps.X402.PayAndFetch(ctx, chosen.URL, record.VendorChosen.PriceEURQ)
 		if err == nil {
 			emit(EventPaymentSent, map[string]interface{}{
-				"vendor":  record.VendorName,
-				"amount":  record.AmountEURQ,
+				"vendor": record.VendorChosen.Name,
+				"amount": record.VendorChosen.PriceEURQ,
 				"bytes":   len(body),
 				"stub":    true,
 			})

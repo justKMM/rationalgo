@@ -3,7 +3,72 @@ import type { Action } from "./reducer";
 import type { Decision } from "./types";
 import { mockHash, mockRound, uid } from "./mock";
 
-export function runDemo(dispatch: Dispatch<Action>, timers: number[]) {
+// ScenarioEvent mirrors the backend event types from scenario/events.go
+interface ScenarioEvent {
+  type: "decision.pending" | "decision.committed" | "decision.outcome" | "decision.blocked";
+  decision?: Decision;
+  id?: string;
+  tx_id?: string;
+  outcome?: {
+    predicted: string;
+    actual: string;
+    verdict: string;
+    trustDelta: number;
+  };
+  alert?: {
+    id: string;
+    level: "amber" | "red";
+    message: string;
+    at: number;
+  };
+}
+
+function mapEventToAction(event: ScenarioEvent): Action | null {
+  switch (event.type) {
+    case "decision.pending":
+      if (!event.decision) return null;
+      return { type: "ADD_DECISION", decision: event.decision, select: true };
+    case "decision.committed":
+      if (!event.id || !event.tx_id) return null;
+      return { type: "UPDATE_DECISION", id: event.id, patch: { committedTx: event.tx_id, status: "APPROVED" } };
+    case "decision.outcome":
+      if (!event.id || !event.outcome) return null;
+      return { type: "SET_OUTCOME", id: event.id, outcome: event.outcome };
+    case "decision.blocked":
+      if (!event.decision) return null;
+      return { type: "ADD_DECISION", decision: { ...event.decision, status: "BLOCKED" } };
+    default:
+      return null;
+  }
+}
+
+// runLiveScenario subscribes to the backend SSE stream and dispatches events.
+// Returns a cleanup function that closes the connection.
+export function runLiveScenario(dispatch: Dispatch<Action>): () => void {
+  const evtSource = new EventSource(
+    `${import.meta.env.VITE_API_URL ?? "http://localhost:8080"}/api/scenario/run`
+  );
+
+  evtSource.onmessage = (e: MessageEvent) => {
+    try {
+      const event = JSON.parse(e.data as string) as ScenarioEvent;
+      // Handle blocked decisions: also fire an alert if provided
+      if (event.type === "decision.blocked" && event.alert) {
+        dispatch({ type: "ADD_ALERT", alert: event.alert });
+      }
+      const action = mapEventToAction(event);
+      if (action) dispatch(action);
+    } catch {
+      // ignore malformed SSE frames
+    }
+  };
+
+  evtSource.onerror = () => evtSource.close();
+
+  return () => evtSource.close();
+}
+
+
   const weatherId = uid();
   const now = Date.now();
 

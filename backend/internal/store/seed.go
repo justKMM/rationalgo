@@ -22,7 +22,7 @@ func Seed() models.AppState {
 				ID: "fp1", Vendor: "FuelPriceAPI", Status: models.StatusApproved,
 				AmountEURQ: 0.15,
 				Intent:     "Fuel index lookup BE/NL/DE for nightly fleet rebalancing",
-				Alternatives: []models.Alternative{
+				Alternatives: []models.LegacyAlternative{
 					{Name: "EIA-public", Reason: "EU coverage missing; US-only feed"},
 					{Name: "cached @ 06:00", Reason: "8h stale — diesel moved 2.1% intraday"},
 				},
@@ -35,7 +35,7 @@ func Seed() models.AppState {
 				ID: "tg1", Vendor: "TollGuru", Status: models.StatusApproved,
 				AmountEURQ: 0.04,
 				Intent:     "Toll cost lookup BE→NL corridor, truck class N3",
-				Alternatives: []models.Alternative{
+				Alternatives: []models.LegacyAlternative{
 					{Name: "ViaMichelin", Reason: "no N3 truck class endpoint"},
 					{Name: "internal-table", Reason: "last updated 2024-11; rates revised Q1"},
 				},
@@ -48,7 +48,7 @@ func Seed() models.AppState {
 				ID: "os1", Vendor: "OSRM-Pro", Status: models.StatusApproved,
 				AmountEURQ: 0.08,
 				Intent:     "Recompute route after traffic spike on A4 Antwerp→Breda",
-				Alternatives: []models.Alternative{
+				Alternatives: []models.LegacyAlternative{
 					{Name: "OSRM-public", Reason: "no live-traffic layer"},
 					{Name: "Google Directions", Reason: "1.2 EURQ per 1k req — 15× quote"},
 				},
@@ -61,7 +61,7 @@ func Seed() models.AppState {
 				ID: "ss1", Vendor: "ScrapeShack", Status: models.StatusBlocked,
 				AmountEURQ: 0.9,
 				Intent:     "Competitor pricing scrape, rotating residential proxy",
-				Alternatives: []models.Alternative{
+				Alternatives: []models.LegacyAlternative{
 					{Name: "RateIntel", Reason: "allowlisted but quote 3× higher"},
 				},
 				ExpectedValue: "—", Confidence: 0.41,

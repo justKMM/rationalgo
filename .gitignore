@@ -1,6 +1,9 @@
 # Cursor
 .cursor
 
+# Claude
+.github
+
 # React frontend
 frontend/node_modules
 

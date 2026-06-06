@@ -34,6 +34,7 @@ export interface Decision {
   timestamp: number;
   outcome?: Outcome;
   blockedReason?: string;
+  committedTx?: string;
 }
 
 export interface Vendor {
