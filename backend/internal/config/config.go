@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strings"
 )
@@ -19,11 +20,12 @@ type Config struct {
 	IndexerToken  string
 	X402ProbeURL  string
 	HTTPAddr      string
+	AnthropicKey  string
 }
 
 // Load reads configuration from environment variables.
 func Load() (Config, error) {
-	return Config{
+	cfg := Config{
 		WalletAddress: strings.TrimSpace(os.Getenv("RATIONALGO_WALLET_ADDRESS")),
 		AlgodToken:    strings.TrimSpace(os.Getenv("RATIONALGO_ALGOD_TOKEN")),
 		Mnemonic:      strings.TrimSpace(os.Getenv("RATIONALGO_MNEMONIC")),
@@ -32,7 +34,14 @@ func Load() (Config, error) {
 		IndexerToken:  strings.TrimSpace(os.Getenv("RATIONALGO_INDEXER_TOKEN")),
 		X402ProbeURL:  envOr("RATIONALGO_X402_PROBE_URL", "https://example.x402.goplausible.xyz/avm/weather"),
 		HTTPAddr:      envOr("RATIONALGO_HTTP_ADDR", ":8080"),
-	}, nil
+		AnthropicKey:  strings.TrimSpace(os.Getenv("RATIONALGO_ANTHROPIC_KEY")),
+	}
+	// Do NOT fatal here — spike commands don't need it.
+	// The reasoning service will fail loudly at call time if key is empty.
+	if cfg.AnthropicKey == "" {
+		log.Println("warning: RATIONALGO_ANTHROPIC_KEY not set; reasoning unavailable")
+	}
+	return cfg, nil
 }
 
 // WalletConfigured reports whether a real wallet address is set.

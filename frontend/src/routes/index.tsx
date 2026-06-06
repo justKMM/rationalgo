@@ -7,7 +7,7 @@ import { PolicyPanel } from "@/components/rationale/PolicyPanel";
 import { VendorTrustPanel } from "@/components/rationale/VendorTrustPanel";
 import { reducer } from "@/lib/rationale/reducer";
 import { initialState } from "@/lib/rationale/mock";
-import { runDemo } from "@/lib/rationale/demoScenario";
+import { runLiveScenario } from "@/lib/rationale/demoScenario";
 import { fetchState, isApiConfigured } from "@/lib/rationale/api";
 
 export const Route = createFileRoute("/")({
@@ -32,9 +32,15 @@ function RationaleApp() {
   );
   const timersRef = useRef<number[]>([]);
 
+  const cleanupRef = useRef<(() => void) | null>(null);
+
   const clearTimers = useCallback(() => {
     timersRef.current.forEach((t) => window.clearTimeout(t));
     timersRef.current = [];
+    if (cleanupRef.current) {
+      cleanupRef.current();
+      cleanupRef.current = null;
+    }
   }, []);
 
   useEffect(() => clearTimers, [clearTimers]);
@@ -60,10 +66,7 @@ function RationaleApp() {
   const onRun = () => {
     if (running) return;
     setRunning(true);
-    runDemo(dispatch, timersRef.current);
-    timersRef.current.push(
-      window.setTimeout(() => setRunning(false), 7500)
-    );
+    cleanupRef.current = runLiveScenario(dispatch);
   };
 
   const onReset = () => {

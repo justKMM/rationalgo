@@ -1,45 +1,49 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"rationalgo/internal/config"
 	"rationalgo/internal/repository"
 	"rationalgo/internal/scenario"
 	"rationalgo/internal/services/algorand"
+	"rationalgo/internal/services/outcome"
 	"rationalgo/internal/services/policy"
 	"rationalgo/internal/services/reasoning"
-	"rationalgo/internal/services/outcome"
 	"rationalgo/internal/services/vendor"
 	"rationalgo/internal/services/x402"
 )
 
 // Server is the HTTP API for the audit dashboard.
 type Server struct {
-	cfg   config.Config
-	store *repository.Store
-	deps  scenario.Deps
-	mux   *http.ServeMux
+	cfg          config.Config
+	store        *repository.Store
+	deps         scenario.Deps
+	reasoningSvc *reasoning.Service
+	mux          *http.ServeMux
 }
 
 // NewServer creates an API server with seeded in-memory state.
-func NewServer(cfg config.Config) *Server {
+func NewServer(cfg config.Config, reasoningSvc *reasoning.Service) *Server {
 	store := repository.NewStore()
 	s := &Server{
-		cfg:   cfg,
-		store: store,
-		deps:  buildDeps(cfg, store),
-		mux:   http.NewServeMux(),
+		cfg:          cfg,
+		store:        store,
+		deps:         buildDeps(cfg, store, reasoningSvc),
+		reasoningSvc: reasoningSvc,
+		mux:          http.NewServeMux(),
 	}
 	s.routes()
 	return s
 }
 
-func buildDeps(cfg config.Config, store *repository.Store) scenario.Deps {
+func buildDeps(cfg config.Config, store *repository.Store, reasoningSvc *reasoning.Service) scenario.Deps {
 	vendors := vendor.NewService()
 	state := store.State()
 
@@ -49,7 +53,7 @@ func buildDeps(cfg config.Config, store *repository.Store) scenario.Deps {
 	}
 
 	return scenario.Deps{
-		Reasoning:  reasoning.NewService(),
+		Reasoning:  reasoningSvc,
 		Outcome:    outcome.NewService(),
 		Algorand:   algClient,
 		X402:       x402.NewService(cfg),
@@ -70,6 +74,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/state", s.handleState)
 	s.mux.HandleFunc("GET /api/decisions", s.handleDecisions)
 	s.mux.HandleFunc("POST /api/state/reset", s.handleReset)
+	s.mux.HandleFunc("POST /api/decide", s.handleDecide)
 	s.mux.HandleFunc("POST /api/scenario/run", s.handleScenarioRun)
 }
 
@@ -110,7 +115,7 @@ func (s *Server) handleDecisions(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleReset(w http.ResponseWriter, r *http.Request) {
 	s.store.Reset()
-	s.deps = buildDeps(s.cfg, s.store)
+	s.deps = buildDeps(s.cfg, s.store, s.reasoningSvc)
 	writeJSON(w, http.StatusOK, s.store.State())
 }
 
@@ -152,4 +157,56 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		fmt.Fprintf(w, `{"error":%q}`, strings.ReplaceAll(err.Error(), `"`, `\"`))
 	}
+}
+
+// decideRequest is the body for POST /api/decide.
+type decideRequest struct {
+	Intent    string `json:"intent"`
+	AgentID   string `json:"agent_id"`
+	SessionID string `json:"session_id"`
+}
+
+// handleDecide runs the full reasoning pipeline and returns a DecisionRecord.
+func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request) {
+	var req decideRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	if req.Intent == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "intent is required"})
+		return
+	}
+	if req.AgentID == "" {
+		req.AgentID = "rationalgo-agent-01"
+	}
+	if req.SessionID == "" {
+		req.SessionID = fmt.Sprintf("sess-%d", time.Now().UnixNano())
+	}
+
+	vendorSvc := vendor.NewService()
+	vendors := vendorSvc.GetDemoWeatherVendors()
+	state := s.store.State()
+
+	// Evaluate policy against the primary (paid) vendor with default budget parameters.
+	pol := policy.Evaluate(
+		vendors[0],
+		vendors[0].PriceEURQ,
+		0.0,
+		10.0,
+		state.AllowedVendors,
+		vendorSvc.GetPriceHistory(),
+	)
+
+	ctx, cancel := context.WithTimeout(r.Context(), 35*time.Second)
+	defer cancel()
+
+	record, err := s.reasoningSvc.GenerateDecision(ctx, req.AgentID, req.SessionID, req.Intent, vendors, pol)
+	if err != nil {
+		log.Printf("reasoning: %v", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, record)
 }
