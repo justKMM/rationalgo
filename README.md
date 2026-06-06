@@ -20,7 +20,7 @@ Built for the [Algorand x402 Agentic Commerce Hackathon](https://luma.com/agenti
 | Algorand legacy spike (`spike algorand`) | ⚠️ | Needs valid Pera **Algorand** passphrase + funded wallet |
 | RAv1 spike (`spike provenance`) | ⚠️ | Same wallet requirement; commits `RAv1:` envelope |
 | Vendor catalog | ✅ | `internal/catalog/` + `services/vendor/` adapter |
-| Reasoning / policy / outcome | ✅ | Stub services wired into hero orchestrator |
+| Reasoning / policy / outcome | ✅ | Hero uses deterministic demo reasoning; `POST /api/decide` uses Anthropic when key is set |
 | Hero orchestrator | ✅ | `scenario/hero.go` — normal + anomaly flows |
 | HTTP API | ✅ | State, decisions, scenario SSE stream |
 | Dashboard → API | ✅ | Hydrates from `GET /api/state`; demo still client-side |
@@ -55,7 +55,7 @@ curl -N -X POST "http://localhost:8080/api/scenario/run?scenario=anomaly"
 | `backend/cmd/rationalgo/` | CLI — `status`, `serve`, `spike` |
 | `backend/internal/catalog/` | Curated vendor registry (MVP source of truth) |
 | `backend/internal/scenario/` | Hero demo orchestrator + SSE events |
-| `backend/internal/models/` | `DecisionRecord`, `VendorOption`, `PolicyResult`, dashboard types |
+| `backend/internal/models/` | Unified types in `decision.go` — `DecisionRecord`, `VendorOption`, `PolicyResult`, dashboard `Decision` |
 | `backend/internal/services/` | `algorand`, `x402`, `decision`, `vendor`, `reasoning`, `policy`, `outcome` |
 | `backend/internal/api/` | HTTP handlers (stdlib `net/http`) |
 | `backend/internal/repository/` | Thread-safe in-memory store |
@@ -137,8 +137,10 @@ cp .env.example .env
 go build -o bin/rationalgo ./cmd/rationalgo
 go run ./cmd/rationalgo              # config status
 go run ./cmd/rationalgo spike all    # integration spikes
-go run ./cmd/rationalgo serve        # HTTP API :8080
+go run ./cmd/rationalgo serve        # HTTP API :8080 (Ctrl+C to stop)
 ```
+
+Stop the server with **Ctrl+C** before starting another instance. If `:8080` is already in use, a previous `rationalgo.exe` may still be running — see [Troubleshooting](#troubleshooting).
 
 ### Provenance package (no wallet needed)
 
@@ -184,6 +186,7 @@ With `serve` running, the dashboard top bar shows **api live**.
 | POST | `/api/state/reset` | Reset to seed data |
 | POST | `/api/scenario/run` | SSE stream — normal hero demo |
 | POST | `/api/scenario/run?scenario=anomaly` | SSE stream — blocked purchase demo |
+| POST | `/api/decide` | LLM reasoning pipeline — returns `DecisionRecord` (requires `RATIONALGO_ANTHROPIC_KEY`) |
 
 CORS enabled for local frontend dev (`Access-Control-Allow-Origin: *`).
 
@@ -217,6 +220,8 @@ Fund via the [Algorand Testnet dispenser](https://bank.testnet.algorand.network/
 | `mnemonic address … does not match` | Mnemonic and address must be the **same** account |
 | `account info: …` / insufficient balance | Fund via testnet dispenser |
 | x402 returns 404 | Use `/avm/weather` not `/api/json` |
+| `listen tcp :8080: bind: … address already in use` | Stop the old server (**Ctrl+C**) or kill the stale process: `netstat -ano \| findstr :8080` then `taskkill /PID <pid> /F`. Or set `RATIONALGO_HTTP_ADDR=:8081` in `.env`. |
+| `RATIONALGO_ANTHROPIC_KEY not set` | Harmless for hero demo and spikes; required only for `POST /api/decide` |
 
 ---
 
@@ -228,7 +233,7 @@ Stdlib-only package. `Encode` / `Decode` for pre-payment envelopes; `EncodeOutco
 
 ### `internal/catalog/` — vendor registry
 
-Hard-coded MVP catalog (`WeatherPro`, `GoPlausible Weather`, `OpenMeteo`, routing/fuel/traffic vendors). `services/vendor/` adapts catalog entries to `models.VendorOption` and supplies price history for anomaly detection.
+Hard-coded MVP catalog (`WeatherPro`, `GoPlausible Weather`, `OpenMeteo`, routing/fuel/traffic vendors). `services/vendor/` adapts catalog entries to `models.VendorOption` and supplies price history for anomaly detection. The old duplicate `vendor/catalog.go` and split model files were merged into this registry and `models/decision.go`.
 
 ### `internal/scenario/hero.go` — orchestrator
 
@@ -244,8 +249,8 @@ agent.thinking → decision.pending → [policy]
 
 | Service | Role |
 |---------|------|
-| `reasoning` | Picks best vendor for Frankfurt weather task; builds `DecisionRecord` |
-| `policy` | Budget, allowlist, 5× price anomaly |
+| `reasoning` | `GenerateDemoDecision` — deterministic hero path (no API key). `GenerateDecision` — Anthropic LLM for `POST /api/decide` |
+| `policy` | Budget, allowlist, 5× price anomaly (`services/policy/service.go`) |
 | `outcome` | Verifies paid forecast vs simulated OpenMeteo ground truth |
 | `x402` | `RunProbe` + `PayAndFetch` stub (real EURQ signing next) |
 | `algorand` | `CommitHash`, `CommitProvenance`, `CommitOutcome` via 0-ALGO self-payments |
@@ -280,6 +285,7 @@ agent.thinking → decision.pending → [policy]
 | `RATIONALGO_ALGOD_URL` | No | Default: `https://testnet-api.algonode.cloud` |
 | `RATIONALGO_X402_PROBE_URL` | No | Default: `…/avm/weather` |
 | `RATIONALGO_HTTP_ADDR` | No | Default: `:8080` |
+| `RATIONALGO_ANTHROPIC_KEY` | No | Anthropic API key for `POST /api/decide` (hero demo works without it) |
 | `VITE_API_URL` | No | Frontend API base (default: `http://localhost:8080`) |
 | `VITE_USE_API` | No | Set to `false` to skip API and use local mock only |
 
