@@ -28,16 +28,11 @@ function MissionControl() {
 
       <main className="mx-auto w-full max-w-[1600px] px-4 py-4 lg:px-6 lg:py-5">
         {/* Page header */}
-        <div className="mb-4 flex items-end justify-between">
-          <div>
-            <h1 className="text-[20px] font-semibold tracking-tight">Mission Control</h1>
-            <p className="mt-0.5 text-[12px] text-muted-foreground">
-              AI Agent · Policy · Algorand Provenance · x402 Payment · Outcome Verification
-            </p>
-          </div>
-          <div className="hidden md:block font-mono text-[11px] text-muted-foreground">
-            agent.v1.4 · region us-east · clock UTC
-          </div>
+        <div className="mb-4">
+          <h1 className="text-[20px] font-semibold tracking-tight">Mission Control</h1>
+          <p className="mt-0.5 text-[12px] text-muted-foreground">
+            AI Agent · Policy · Algorand Provenance · x402 Payment · Outcome Verification
+          </p>
         </div>
 
         {/* Metrics strip */}
@@ -45,13 +40,13 @@ function MissionControl() {
 
         {/* 3-column workspace */}
         <section className="mt-4 grid grid-cols-1 gap-0 overflow-hidden rounded-[10px] border border-border bg-surface lg:grid-cols-12 lg:[grid-auto-rows:minmax(0,1fr)]">
-          <div className="lg:col-span-3 lg:hairline-r min-h-[480px] lg:min-h-[600px] flex flex-col hairline-b lg:border-b-0">
+          <div className="panel-workspace-h lg:col-span-3 lg:hairline-r flex min-h-0 flex-col hairline-b lg:border-b-0">
             <ReasoningFeed />
           </div>
-          <div className="lg:col-span-6 lg:hairline-r min-h-[480px] lg:min-h-[600px] flex flex-col hairline-b lg:border-b-0">
+          <div className="panel-workspace-h lg:col-span-6 lg:hairline-r flex min-h-0 flex-col hairline-b lg:border-b-0">
             <ActiveDecisionCard />
           </div>
-          <div className="lg:col-span-3 min-h-[480px] lg:min-h-[600px] flex flex-col">
+          <div className="panel-workspace-h lg:col-span-3 flex min-h-0 flex-col">
             <TrustPipeline />
           </div>
         </section>

@@ -6,11 +6,14 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"rationalgo/internal/util"
 )
 
-// defaultSettlementAssetID is the testnet USDC ASA used for x402 settlement
+// defaultX402HTTPTimeout covers paid GET while the seller settles on-chain; Tatum 429 retries can exceed 60s.
+const defaultX402HTTPTimeout = 5 * time.Minute
+
 // (6 decimals; see README — mainnet USDC is 31566704).
 const defaultSettlementAssetID = 10458941
 
@@ -22,6 +25,11 @@ type Config struct {
 	WalletAddress string
 	AlgodToken    string
 	Mnemonic      string
+
+	// Seller wallet receives x402 /company/* payments (buyer uses WalletAddress/Mnemonic).
+	SellerWalletAddress string
+	SellerMnemonic      string
+
 	AlgodURL      string
 	IndexerURL    string
 	IndexerToken  string
@@ -39,7 +47,11 @@ func Load() (Config, error) {
 		WalletAddress: strings.TrimSpace(os.Getenv("RATIONALGO_WALLET_ADDRESS")),
 		AlgodToken:    strings.TrimSpace(os.Getenv("RATIONALGO_ALGOD_TOKEN")),
 		Mnemonic:      strings.TrimSpace(os.Getenv("RATIONALGO_MNEMONIC")),
-		AlgodURL:      envOr("RATIONALGO_ALGOD_URL", "https://testnet-api.algonode.cloud"),
+
+		SellerWalletAddress: strings.TrimSpace(os.Getenv("RATIONALGO_SELLER_WALLET_ADDRESS")),
+		SellerMnemonic:      strings.TrimSpace(os.Getenv("RATIONALGO_SELLER_MNEMONIC")),
+
+		AlgodURL: envOr("RATIONALGO_ALGOD_URL", "https://testnet-api.algonode.cloud"),
 		IndexerURL:    envOr("RATIONALGO_INDEXER_URL", "https://testnet-idx.algonode.cloud"),
 		IndexerToken:  strings.TrimSpace(os.Getenv("RATIONALGO_INDEXER_TOKEN")),
 		X402ProbeURL:  envOr("RATIONALGO_X402_PROBE_URL", "https://example.x402.goplausible.xyz/avm/weather"),
@@ -71,6 +83,39 @@ func (c Config) ValidateForSpike() error {
 	}
 	if err := util.ValidateWalletMnemonic(c.Mnemonic, c.WalletAddress); err != nil {
 		return fmt.Errorf("RATIONALGO_MNEMONIC: %w", err)
+	}
+	return nil
+}
+
+// SellerWalletAddressEffective returns the seller payout address (falls back to buyer wallet).
+func (c Config) SellerWalletAddressEffective() string {
+	if addr := strings.TrimSpace(c.SellerWalletAddress); addr != "" && addr != WalletAddressPlaceholder {
+		return addr
+	}
+	return c.WalletAddress
+}
+
+// SellerMnemonicEffective returns the seller signing mnemonic (falls back to buyer wallet).
+func (c Config) SellerMnemonicEffective() string {
+	if mn := strings.TrimSpace(c.SellerMnemonic); mn != "" {
+		return mn
+	}
+	return c.Mnemonic
+}
+
+// SellerWalletConfigured reports whether the x402 seller wallet is usable.
+func (c Config) SellerWalletConfigured() bool {
+	addr := c.SellerWalletAddressEffective()
+	return addr != "" && addr != WalletAddressPlaceholder && c.SellerMnemonicEffective() != ""
+}
+
+// ValidateForSeller checks seller wallet credentials for the x402 marketplace paywall.
+func (c Config) ValidateForSeller() error {
+	if !c.SellerWalletConfigured() {
+		return fmt.Errorf("set RATIONALGO_SELLER_WALLET_ADDRESS and RATIONALGO_SELLER_MNEMONIC in backend/.env (or reuse RATIONALGO_WALLET_ADDRESS / RATIONALGO_MNEMONIC)")
+	}
+	if err := util.ValidateWalletMnemonic(c.SellerMnemonicEffective(), c.SellerWalletAddressEffective()); err != nil {
+		return fmt.Errorf("RATIONALGO_SELLER_MNEMONIC: %w", err)
 	}
 	return nil
 }
@@ -108,4 +153,30 @@ func (c Config) PublicBaseURL() string {
 		return "http://localhost" + addr
 	}
 	return "http://" + addr
+}
+
+// AlgodMinInterval returns the minimum pause between algod HTTP calls.
+// Tatum free tier allows 5 req/min — auto-pace at 13s unless overridden.
+func (c Config) AlgodMinInterval() time.Duration {
+	if v := strings.TrimSpace(os.Getenv("RATIONALGO_ALGOD_MIN_INTERVAL_MS")); v != "" {
+		ms, err := strconv.Atoi(v)
+		if err == nil && ms >= 0 {
+			return time.Duration(ms) * time.Millisecond
+		}
+	}
+	if strings.Contains(strings.ToLower(c.AlgodURL), "tatum.io") {
+		return 13 * time.Second
+	}
+	return 0
+}
+
+// X402HTTPTimeout is how long PayAndFetch waits per HTTP round-trip (402 probe + paid GET).
+func (c Config) X402HTTPTimeout() time.Duration {
+	if v := strings.TrimSpace(os.Getenv("RATIONALGO_X402_HTTP_TIMEOUT_SEC")); v != "" {
+		sec, err := strconv.Atoi(v)
+		if err == nil && sec > 0 {
+			return time.Duration(sec) * time.Second
+		}
+	}
+	return defaultX402HTTPTimeout
 }

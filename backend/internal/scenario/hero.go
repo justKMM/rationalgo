@@ -146,7 +146,6 @@ func runScenario(ctx context.Context, scenario ScenarioType, deps Deps, ch chan<
 		if err != nil {
 			return
 		}
-		emit(EventDecisionPending, record)
 
 		policyResult := deps.Policy(
 			chosen,
@@ -162,6 +161,8 @@ func runScenario(ctx context.Context, scenario ScenarioType, deps Deps, ch chan<
 			return
 		}
 		record.ReasoningHash = hash
+
+		emit(EventDecisionPending, record)
 
 		if !policyResult.Approved {
 			record.Status = models.StatusBlocked
@@ -195,11 +196,15 @@ func runScenario(ctx context.Context, scenario ScenarioType, deps Deps, ch chan<
 				Confidence:   record.Confidence,
 				CommittedAt:  time.Now().Unix(),
 			}
-			txID, err := deps.Algorand.CommitProvenance(env)
-			if err == nil {
+			txID, commitErr := deps.Algorand.CommitProvenance(env)
+			if commitErr == nil {
 				record.CommittedTx = txID
-				emit(EventDecisionCommitted, record)
 			}
+			emit(EventDecisionCommitted, map[string]interface{}{
+				"record":       record,
+				"committed_tx": record.CommittedTx,
+				"commit_error": commitErrString(commitErr),
+			})
 		}
 
 		// actualConfidence falls back to the catalog's advertised SuccessRate if payment
@@ -220,6 +225,7 @@ func runScenario(ctx context.Context, scenario ScenarioType, deps Deps, ch chan<
 				payload["bytes"] = len(body)
 				if tx := deps.X402.LastSettlementTx(); tx != "" {
 					payload["settlement_tx"] = tx
+					record.SettlementTx = tx
 				}
 				var env researchEnvelope
 				if jsonErr := json.Unmarshal(body, &env); jsonErr == nil && env.Confidence > 0 {
@@ -353,4 +359,11 @@ func researchPayURL(endpointURL, company string) string {
 		sep = "&"
 	}
 	return endpointURL + sep + "company=" + url.QueryEscape(company)
+}
+
+func commitErrString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }

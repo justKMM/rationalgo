@@ -4,8 +4,6 @@ import { useMissionStore } from "@/hooks/useMissionStore";
 import { isApiConfigured } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-const TABS = ["Mission Control", "Decision History", "Audit Trail"] as const;
-
 export function TopBar() {
   const { runScenario, reset, running, apiLive, hydrate, error } = useMissionStore();
   const apiMode = isApiConfigured();
@@ -19,31 +17,13 @@ export function TopBar() {
   return (
     <header className="sticky top-0 z-40 hairline-b bg-background/85 backdrop-blur-md">
       <div className="mx-auto flex h-12 max-w-[1600px] items-center gap-6 px-4 lg:px-6">
-        {/* Brand */}
         <div className="flex items-center gap-2">
           <div className="grid h-5 w-5 place-items-center rounded-[5px] bg-foreground text-background">
             <span className="text-[10px] font-bold leading-none">R</span>
           </div>
           <span className="text-[13px] font-semibold tracking-tight">RationAlgo</span>
+          <span className="text-[12px] text-muted-foreground">Mission Control</span>
         </div>
-
-        {/* Tabs */}
-        <nav className="flex items-center gap-0.5">
-          {TABS.map((t, i) => (
-            <button
-              key={t}
-              className={cn(
-                "relative h-12 px-3 text-[13px] transition-colors",
-                i === 0 ? "text-foreground" : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {t}
-              {i === 0 && (
-                <span className="absolute inset-x-3 bottom-0 h-px bg-foreground" />
-              )}
-            </button>
-          ))}
-        </nav>
 
         <div className="ml-auto flex items-center gap-3">
           {/* Status */}

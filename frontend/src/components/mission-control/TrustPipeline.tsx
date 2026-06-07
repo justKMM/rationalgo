@@ -18,7 +18,7 @@ export function TrustPipeline() {
           {Math.min(stage, 6)}/6
         </span>
       </header>
-      <ol className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+      <ol className="panel-scroll-body px-3 py-3">
         {PIPELINE_STAGES.map((s, i) => {
           const idx = i + 1;
           const active = stage === idx;

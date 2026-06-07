@@ -28,39 +28,53 @@ type Server struct {
 	store        *repository.Store
 	deps         scenario.Deps
 	reasoningSvc *reasoning.Service
+	algClient    *algorand.Client
 	seller       *x402.Seller
+	sellerErr    string
 	mux          *http.ServeMux
 }
 
 // NewServer creates an API server with seeded in-memory state.
 func NewServer(cfg config.Config, reasoningSvc *reasoning.Service) *Server {
 	store := repository.NewStore()
+
+	var algClient *algorand.Client
+	if client, err := algorand.NewClient(cfg); err == nil {
+		algClient = client
+	} else {
+		log.Printf("Algorand buyer unavailable: %v", err)
+	}
+
+	seller, sellerErr := buildSeller(cfg)
+
 	s := &Server{
 		cfg:          cfg,
 		store:        store,
-		deps:         buildDeps(cfg, store, reasoningSvc),
+		algClient:    algClient,
+		deps:         buildDeps(cfg, store, reasoningSvc, algClient),
 		reasoningSvc: reasoningSvc,
-		seller:       buildSeller(cfg),
+		seller:       seller,
+		sellerErr:    sellerErr,
 		mux:          http.NewServeMux(),
 	}
 	s.routes()
 	return s
 }
 
-func buildDeps(cfg config.Config, store *repository.Store, reasoningSvc *reasoning.Service) scenario.Deps {
+func buildDeps(cfg config.Config, store *repository.Store, reasoningSvc *reasoning.Service, algClient *algorand.Client) scenario.Deps {
 	vendors := vendor.NewService(cfg.PublicBaseURL())
 	state := store.State()
 
-	var algClient scenario.AlgorandCommitter
-	if client, err := algorand.NewClient(cfg); err == nil {
-		algClient = client
+	var algCommitter scenario.AlgorandCommitter
+	if algClient != nil {
+		algCommitter = algClient
 	}
 
 	return scenario.Deps{
 		Reasoning:  reasoningSvc,
 		Outcome:    outcome.NewService(),
-		Algorand:   algClient,
-		X402:       x402.NewService(cfg),
+		Algorand:   algCommitter,
+		X402:       x402.NewService(cfg, algClient),
 		Store:      store,
 		Vendors:    vendors.GetResearchEndpoints,
 		Policy:     policy.Evaluate,
@@ -72,25 +86,26 @@ func buildDeps(cfg config.Config, store *repository.Store, reasoningSvc *reasoni
 	}
 }
 
-// buildSeller constructs the x402 seller that protects /company/* — it opts the wallet
-// into the settlement ASA and resolves the network identifier on-chain. Returns nil if
-// the wallet isn't configured; protected routes then respond with a clear error instead.
-func buildSeller(cfg config.Config) *x402.Seller {
-	client, err := algorand.NewClient(cfg)
+// buildSeller constructs the x402 seller that protects /company/* using RATIONALGO_SELLER_* credentials.
+func buildSeller(cfg config.Config) (*x402.Seller, string) {
+	client, err := algorand.NewSellerClient(cfg)
 	if err != nil {
-		log.Printf("x402 seller unavailable (no wallet): %v", err)
-		return nil
+		msg := err.Error()
+		log.Printf("x402 seller unavailable (wallet): %v", err)
+		return nil, msg
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
 	seller, err := x402.NewSeller(ctx, client, cfg.SettlementAssetID)
 	if err != nil {
-		log.Printf("x402 seller unavailable: %v", err)
-		return nil
+		msg := err.Error()
+		log.Printf("x402 seller unavailable (init): %v", err)
+		return nil, msg
 	}
-	return seller
+	log.Printf("x402 seller ready — payout address %s", client.Address())
+	return seller, ""
 }
 
 func (s *Server) routes() {
@@ -118,8 +133,12 @@ func (s *Server) routes() {
 func (s *Server) protectResearchEndpoint(meta research.EndpointMeta, handler http.HandlerFunc) http.HandlerFunc {
 	if s.seller == nil {
 		return func(w http.ResponseWriter, r *http.Request) {
+			msg := s.sellerErr
+			if msg == "" {
+				msg = "configure RATIONALGO_SELLER_WALLET_ADDRESS and RATIONALGO_SELLER_MNEMONIC in backend/.env"
+			}
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
-				"error": "x402 seller unavailable: configure RATIONALGO_WALLET_ADDRESS / RATIONALGO_MNEMONIC",
+				"error": "x402 seller unavailable: " + msg,
 			})
 		}
 	}
@@ -168,7 +187,7 @@ func (s *Server) handleDecisions(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleReset(w http.ResponseWriter, r *http.Request) {
 	s.store.Reset()
-	s.deps = buildDeps(s.cfg, s.store, s.reasoningSvc)
+	s.deps = buildDeps(s.cfg, s.store, s.reasoningSvc, s.algClient)
 	writeJSON(w, http.StatusOK, s.store.State())
 }
 

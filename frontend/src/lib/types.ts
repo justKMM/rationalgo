@@ -10,6 +10,7 @@ export interface DecisionRecord {
   reasoningSummary: string;
   txPre?: string;
   txOutcome?: string;
+  settlementTx?: string;
   policyChecks?: PolicyCheck[];
   predictedOutcome?: string;
   actualOutcome?: string;

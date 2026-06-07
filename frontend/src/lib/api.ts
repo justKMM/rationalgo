@@ -38,6 +38,7 @@ export interface BackendDecisionRecord {
   policy?: BackendPolicyResult;
   status: "APPROVED" | "BLOCKED" | "PENDING";
   committed_tx?: string;
+  settlement_tx?: string;
   outcome_tx?: string;
   outcome?: BackendOutcomeRecord;
   expected_value?: string;
@@ -59,6 +60,8 @@ export interface BackendDecision {
     reputation?: number;
   };
   committedTx?: string;
+  settlementTx?: string;
+  outcomeTx?: string;
   outcome?: BackendOutcomeRecord;
   blockedReason?: string;
   timestamp: number;

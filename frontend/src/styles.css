@@ -66,6 +66,15 @@
   --success: #10B981;
   --warn: #F59E0B;
   --danger: #EF4444;
+  --panel-workspace-h: 480px;
+  --panel-history-h: 360px;
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --panel-workspace-h: 600px;
+    --panel-history-h: 400px;
+  }
 }
 
 .dark {
@@ -122,6 +131,14 @@
 }
 
 @utility row-in { animation: rowIn 700ms ease-out; }
+
+@utility panel-workspace-h { height: var(--panel-workspace-h); }
+@utility panel-history-h { height: var(--panel-history-h); }
+@utility panel-scroll-body {
+  min-height: 0;
+  flex: 1 1 0%;
+  overflow-y: auto;
+}
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 10px; height: 10px; }

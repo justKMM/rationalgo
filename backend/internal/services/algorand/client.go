@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/algorand/go-algorand-sdk/v2/client/v2/algod"
@@ -19,32 +20,59 @@ import (
 	"rationalgo/pkg/provenance"
 )
 
+const suggestedParamsTTL = 5 * time.Minute
+
 // Client wraps testnet Algod access and transaction signing.
 type Client struct {
 	algod    *algod.Client
 	account  crypto.Account
 	hdSigner *XHDWalletAPI.AlgoPath
+
+	paramsMu      sync.Mutex
+	cachedParams  types.SuggestedParams
+	paramsCached  bool
+	paramsExpires time.Time
+	cachedNetwork string
+
+	optInMu    sync.Mutex
+	optInAssets map[uint64]bool
+
+	rpcMu       sync.Mutex
+	lastRPC     time.Time
+	minInterval time.Duration
 }
 
-// NewClient connects to Algorand Testnet and validates wallet credentials.
+// NewClient connects to Algorand Testnet using the buyer/agent wallet from config.
 func NewClient(cfg config.Config) (*Client, error) {
 	if err := cfg.ValidateForSpike(); err != nil {
 		return nil, err
 	}
+	return newClient(cfg, cfg.WalletAddress, cfg.Mnemonic)
+}
 
+// NewSellerClient connects using the x402 seller wallet (RATIONALGO_SELLER_* env vars).
+func NewSellerClient(cfg config.Config) (*Client, error) {
+	if err := cfg.ValidateForSeller(); err != nil {
+		return nil, err
+	}
+	return newClient(cfg, cfg.SellerWalletAddressEffective(), cfg.SellerMnemonicEffective())
+}
+
+func newClient(cfg config.Config, walletAddress, mnemonic string) (*Client, error) {
 	algodClient, err := algod.MakeClient(cfg.AlgodURL, cfg.AlgodToken)
 	if err != nil {
 		return nil, fmt.Errorf("algod client: %w", err)
 	}
 
-	creds, err := util.ResolveWallet(cfg.Mnemonic, cfg.WalletAddress)
+	creds, err := util.ResolveWallet(mnemonic, walletAddress)
 	if err != nil {
 		return nil, fmt.Errorf("mnemonic: %w", err)
 	}
 
 	client := &Client{
-		algod:   algodClient,
-		account: crypto.Account{Address: creds.Address},
+		algod:       algodClient,
+		account:     crypto.Account{Address: creds.Address},
+		minInterval: cfg.AlgodMinInterval(),
 	}
 	if creds.HDPath != nil {
 		client.hdSigner = creds.HDPath
@@ -61,21 +89,50 @@ func (c *Client) Address() string {
 }
 
 // AccountInfo fetches on-chain account metadata.
-func (c *Client) AccountInfo() (models.Account, error) {
-	return c.algod.AccountInformation(c.account.Address.String()).Do(context.Background())
+func (c *Client) AccountInfo(ctx context.Context) (models.Account, error) {
+	return retryRPC(ctx, c, func() (models.Account, error) {
+		return c.algod.AccountInformation(c.account.Address.String()).Do(ctx)
+	})
 }
 
 // SuggestedParams returns current algod suggested transaction parameters.
+// Results are cached briefly to avoid RPC rate limits during multi-step hero demos.
 func (c *Client) SuggestedParams(ctx context.Context) (types.SuggestedParams, error) {
-	params, err := c.algod.SuggestedParams().Do(ctx)
+	c.paramsMu.Lock()
+	if c.paramsCached && time.Now().Before(c.paramsExpires) {
+		params := c.cachedParams
+		c.paramsMu.Unlock()
+		return params, nil
+	}
+	c.paramsMu.Unlock()
+
+	params, err := retryRPC(ctx, c, func() (types.SuggestedParams, error) {
+		return c.algod.SuggestedParams().Do(ctx)
+	})
 	if err != nil {
 		return types.SuggestedParams{}, fmt.Errorf("suggested params: %w", err)
 	}
+
+	c.paramsMu.Lock()
+	c.cachedParams = params
+	c.paramsCached = true
+	c.paramsExpires = time.Now().Add(suggestedParamsTTL)
+	c.cachedNetwork = "algorand:" + base64.StdEncoding.EncodeToString(params.GenesisHash[:])
+	c.paramsMu.Unlock()
+
 	return params, nil
 }
 
 // NetworkIdentifier returns the x402 CAIP-2 network id for the connected algod node.
 func (c *Client) NetworkIdentifier(ctx context.Context) (string, error) {
+	c.paramsMu.Lock()
+	if c.paramsCached && c.cachedNetwork != "" && time.Now().Before(c.paramsExpires) {
+		network := c.cachedNetwork
+		c.paramsMu.Unlock()
+		return network, nil
+	}
+	c.paramsMu.Unlock()
+
 	params, err := c.SuggestedParams(ctx)
 	if err != nil {
 		return "", err
@@ -102,13 +159,23 @@ func (c *Client) SignTxn(txn types.Transaction) ([]byte, error) {
 
 // EnsureAssetOptIn opts the wallet into an ASA if it has not already.
 func (c *Client) EnsureAssetOptIn(ctx context.Context, assetID uint64) error {
+	c.optInMu.Lock()
+	if c.optInAssets != nil && c.optInAssets[assetID] {
+		c.optInMu.Unlock()
+		return nil
+	}
+	c.optInMu.Unlock()
+
 	addr := c.account.Address.String()
-	info, err := c.algod.AccountInformation(addr).Do(ctx)
+	info, err := retryRPC(ctx, c, func() (models.Account, error) {
+		return c.algod.AccountInformation(addr).Do(ctx)
+	})
 	if err != nil {
 		return fmt.Errorf("account info: %w", err)
 	}
 	for _, holding := range info.Assets {
 		if holding.AssetId == assetID {
+			c.markOptIn(assetID)
 			return nil
 		}
 	}
@@ -127,24 +194,37 @@ func (c *Client) EnsureAssetOptIn(ctx context.Context, assetID uint64) error {
 	if err != nil {
 		return err
 	}
-	txID, err := c.algod.SendRawTransaction(stxn).Do(ctx)
+	txID, err := retryRPC(ctx, c, func() (string, error) {
+		return c.algod.SendRawTransaction(stxn).Do(ctx)
+	})
 	if err != nil {
 		return fmt.Errorf("send opt-in txn: %w", err)
 	}
+	// Opt-in is rare (once at startup); one confirmation poll is acceptable.
 	if err := waitConfirmed(ctx, c.algod, txID); err != nil {
 		return fmt.Errorf("confirm opt-in txn: %w", err)
 	}
+	c.markOptIn(assetID)
 	return nil
 }
 
-// SubmitSignedTxn broadcasts a pre-signed, msgpack-encoded transaction and waits for confirmation.
+func (c *Client) markOptIn(assetID uint64) {
+	c.optInMu.Lock()
+	defer c.optInMu.Unlock()
+	if c.optInAssets == nil {
+		c.optInAssets = make(map[uint64]bool)
+	}
+	c.optInAssets[assetID] = true
+}
+
+// SubmitSignedTxn broadcasts a pre-signed, msgpack-encoded transaction.
+// Confirmation is skipped to keep algod RPC usage low on free-tier providers.
 func (c *Client) SubmitSignedTxn(ctx context.Context, raw []byte) (string, error) {
-	txID, err := c.algod.SendRawTransaction(raw).Do(ctx)
+	txID, err := retryRPC(ctx, c, func() (string, error) {
+		return c.algod.SendRawTransaction(raw).Do(ctx)
+	})
 	if err != nil {
 		return "", fmt.Errorf("send raw txn: %w", err)
-	}
-	if err := waitConfirmed(ctx, c.algod, txID); err != nil {
-		return "", fmt.Errorf("confirm txn: %w", err)
 	}
 	return txID, nil
 }
@@ -189,7 +269,8 @@ func (c *Client) commitNote(note []byte) (string, error) {
 		return "", fmt.Errorf("note too long (%d bytes); max 1000", len(note))
 	}
 
-	params, err := c.algod.SuggestedParams().Do(context.Background())
+	ctx := context.Background()
+	params, err := c.SuggestedParams(ctx)
 	if err != nil {
 		return "", fmt.Errorf("suggested params: %w", err)
 	}
@@ -205,13 +286,11 @@ func (c *Client) commitNote(note []byte) (string, error) {
 		return "", err
 	}
 
-	txID, err := c.algod.SendRawTransaction(stxn).Do(context.Background())
+	txID, err := retryRPC(ctx, c, func() (string, error) {
+		return c.algod.SendRawTransaction(stxn).Do(ctx)
+	})
 	if err != nil {
 		return "", fmt.Errorf("send txn: %w", err)
-	}
-
-	if _, err := transaction.WaitForConfirmation(c.algod, txID, 4, context.Background()); err != nil {
-		return "", fmt.Errorf("confirm txn: %w", err)
 	}
 
 	return txID, nil

@@ -340,12 +340,18 @@ agent.thinking → [per selected endpoint, in value/price order]
 
 ### Frontend
 
-Mission Control lives in `frontend/` (`src/routes/index.tsx`). On mount it hydrates from
-`GET /api/state`. **Execute Flow** / **Anomaly** call `POST /api/scenario/run` (SSE over
-fetch — the endpoint requires POST, not `EventSource`) and map backend events into the
-Zustand store (`src/hooks/useMissionStore.ts`). Backend payloads are normalized in
-`src/lib/mapBackend.ts`. Mock timers in `src/lib/mock/scenarios.ts` remain available when
-`VITE_USE_API=false`.
+Mission Control lives in `frontend/` (`src/routes/index.tsx`) — a single-page ops console.
+On mount it hydrates from `GET /api/state`. The top bar shows **api live** / **offline**
+and exposes **Execute Flow**, **Anomaly**, and **Reset** (no placeholder nav tabs).
+
+**Execute Flow** / **Anomaly** call `POST /api/scenario/run` (SSE over fetch — the endpoint
+requires POST, not `EventSource`) and map backend events into the Zustand store
+(`src/hooks/useMissionStore.ts`). Backend payloads are normalized in `src/lib/mapBackend.ts`.
+Mock timers in `src/lib/mock/scenarios.ts` remain available when `VITE_USE_API=false`.
+
+List panels (Agent Activity, Current Decision, Trust Pipeline, Decision History) use fixed
+heights with internal scroll — tune `--panel-workspace-h` and `--panel-history-h` in
+`frontend/src/styles.css`. See [`frontend/README.md`](frontend/README.md) for layout details.
 
 ---
 

@@ -91,6 +91,7 @@ export function mapBackendRecord(
     reasoningSummary: reasoningSummary(record),
     txPre: record.committed_tx,
     txOutcome: record.outcome_tx,
+    settlementTx: record.settlement_tx,
     policyChecks: policyChecksFromResult(record.policy, cost, budget),
     predictedOutcome: record.expected_value ?? record.outcome?.predicted,
     actualOutcome: record.outcome?.actual,
@@ -123,6 +124,8 @@ export function mapBackendDecision(decision: BackendDecision): DecisionRecord {
       ? `${decision.intent} Blocked: ${decision.blockedReason}`
       : decision.intent,
     txPre: decision.committedTx,
+    settlementTx: decision.settlementTx,
+    txOutcome: decision.outcomeTx,
     policyChecks: policyChecksFromDashboard(decision.policy, decision.amountEURQ),
     predictedOutcome: decision.outcome?.predicted,
     actualOutcome: decision.outcome?.actual ?? (decision.blockedReason ? "Not executed — blocked at policy layer." : undefined),
@@ -139,5 +142,6 @@ export function mergeDecisionRecord(
     policyChecks: patch.policyChecks?.length ? patch.policyChecks : current.policyChecks,
     txPre: patch.txPre ?? current.txPre,
     txOutcome: patch.txOutcome ?? current.txOutcome,
+    settlementTx: patch.settlementTx ?? current.settlementTx,
   };
 }

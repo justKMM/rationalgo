@@ -11,9 +11,9 @@ export function ActiveDecisionCard() {
 
   if (!decision) {
     return (
-      <section className="flex h-full flex-col">
+      <section className="flex h-full min-h-0 flex-col">
         <SectionHeader title="Current Decision" meta="standby" />
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
+        <div className="panel-scroll-body flex flex-col items-center justify-center gap-3 p-8 text-center">
           <Inbox className="h-5 w-5 text-muted-foreground/50" />
           <p className="max-w-xs text-[13px] text-muted-foreground">
             No active decision. When the agent proposes a spend, it surfaces here and runs
@@ -62,7 +62,7 @@ export function ActiveDecisionCard() {
         }
       />
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="panel-scroll-body">
         {/* Task headline */}
         <div className="px-4 py-3 hairline-b">
           <div className="mono-meta mb-1">Task</div>
@@ -102,6 +102,10 @@ export function ActiveDecisionCard() {
           <KVRow
             label="Pre-payment TX"
             valueNode={<TxHash hash={decision.txPre} />}
+          />
+          <KVRow
+            label="x402 settlement"
+            valueNode={<TxHash hash={decision.settlementTx} />}
           />
           <KVRow
             label="Outcome TX"

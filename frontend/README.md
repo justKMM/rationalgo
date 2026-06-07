@@ -54,17 +54,17 @@ src/
     api/                       # (reserved) HTTP handlers — webhooks, x402 callbacks
   components/
     mission-control/
-      TopBar.tsx               # brand, tabs, api-live dot, Execute Flow / Anomaly / Reset
-      ReasoningFeed.tsx        # left column — chronological agent events
+      TopBar.tsx               # brand, api-live dot, Execute Flow / Anomaly / Reset
+      ReasoningFeed.tsx        # left column — chronological agent events (scrollable)
       ActiveDecisionCard.tsx   # center column — current decision, KV rows, policy checks
       TrustPipeline.tsx        # right column — 6-stage vertical ladder
       TrustMetrics.tsx         # 4 KPI tiles strip
-      DecisionHistoryTable.tsx # dense audit table
+      DecisionHistoryTable.tsx # dense audit table (fixed height, scrollable)
       DecisionDetailsDrawer.tsx# slide-out audit trail for one decision
       ConfidenceMeter.tsx      # 0–1 bar
       StatusPill.tsx           # approved / blocked / verified / pending / failed
       TxHash.tsx               # truncated mono hash + copy + explorer link
-    ui/                        # shadcn primitives (do not edit)
+    ui/                        # shadcn primitives — Sheet used by drawer; rest vendored
   hooks/
     useMissionStore.ts         # Zustand store — SSE scenario orchestration + API hydrate
   lib/
@@ -75,9 +75,8 @@ src/
       generators.ts            # seeded PRNG, algoTx(), shortId()
       decisions.ts             # seedHistory() — used when VITE_USE_API=false
       scenarios.ts             # buildScenario('normal' | 'anomaly') — mock fallback
-    api/                       # createServerFn examples (placeholder)
-    config.server.ts           # server-only env reads
-  styles.css                   # Tailwind v4 @theme tokens, hairline utilities
+    config.server.ts           # server-only env reads (for future createServerFn handlers)
+  styles.css                   # Tailwind v4 @theme tokens, panel heights, hairline utilities
 ```
 
 ---
@@ -173,6 +172,18 @@ If you add new mock data, follow the same pattern.
 - `hairline-t`, `hairline-b`, `hairline-r` utilities for 1px dividers — used heavily for the Stripe/Linear density.
 - `mono-meta` utility for tiny uppercase mono labels.
 
+### Panel layout (fixed height + scroll)
+
+List panels keep a stable footprint during long hero runs — content scrolls inside the box instead of stretching the page.
+
+| Token / utility | Default | Used by |
+|---|---|---|
+| `--panel-workspace-h` / `panel-workspace-h` | 480px (600px on `lg+`) | Agent Activity, Current Decision, Trust Pipeline |
+| `--panel-history-h` / `panel-history-h` | 360px (400px on `lg+`) | Decision History table |
+| `panel-scroll-body` | `flex: 1; overflow-y: auto` | Scrollable body inside any panel |
+
+Tune heights in one place: `:root` and the `lg` media query in `src/styles.css`.
+
 **Rule:** never hardcode colors in components — use the tokens. New colors go in `src/styles.css` first.
 
 ---
@@ -230,8 +241,7 @@ Payload shapes follow `backend/internal/models/decision.go` (`DecisionRecord` wi
 | Backend → UI types | `src/lib/mapBackend.ts` |
 | Store orchestration | `src/hooks/useMissionStore.ts` |
 | Execute Flow button | `src/components/mission-control/TopBar.tsx` |
-
-Components under `mission-control/` did not need changes — all wiring is in the store layer.
+| Panel heights / scroll | `src/styles.css` (`--panel-workspace-h`, `--panel-history-h`, `panel-scroll-body`) |
 
 ### 8.6 Environment variables
 
@@ -279,7 +289,7 @@ history are used instead.
 
 - No auth flows, no user management — the product is single-tenant operator UI for the demo.
 - No charts, no analytics dashboard look — this is operations, not BI.
-- No additional routes beyond `/` and the drawer. Tabs in the top bar are placeholders for future surfaces (Decision History page, Audit Trail export) and are intentionally non-functional today.
+- No additional routes beyond `/` and the decision drawer — everything (live feed, active decision, pipeline, history) is on one Mission Control screen.
 - No real Algorand / x402 SDK usage in the frontend. That belongs behind server functions.
 
 ---
@@ -288,7 +298,8 @@ history are used instead.
 
 | Want to change… | File |
 |---|---|
-| Color tokens / typography | `src/styles.css` |
+| Color tokens / typography / panel heights | `src/styles.css` |
+| Top bar actions or api-live indicator | `src/components/mission-control/TopBar.tsx` |
 | Add a stage to the pipeline | `src/lib/types.ts` (`PIPELINE_STAGES`) + `TrustPipeline.tsx` |
 | Add a new event type | `src/lib/types.ts` (`ScenarioEventType`) + `ReasoningFeed.tsx` (icon/tone) |
 | Wire backend / change event handling | `src/hooks/useMissionStore.ts`, `src/lib/api.ts`, `src/lib/mapBackend.ts` |

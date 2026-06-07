@@ -7,6 +7,7 @@ import {
   resetDashboardState,
   runScenarioStream,
   type BackendDecision,
+  type BackendDecisionRecord,
   type BackendScenarioEvent,
 } from "@/lib/api";
 import { mapBackendDecision, mapBackendRecord, mergeDecisionRecord } from "@/lib/mapBackend";
@@ -184,9 +185,27 @@ function handleBackendEvent(
       break;
     }
     case "decision.committed": {
-      const record = mapBackendRecord(event.payload, budget);
+      const payload = event.payload as
+        | BackendDecisionRecord
+        | { record?: BackendDecisionRecord; committed_tx?: string; commit_error?: string };
+      const raw =
+        payload && typeof payload === "object" && "record" in payload && payload.record
+          ? payload.record
+          : (payload as BackendDecisionRecord);
+      const record = mapBackendRecord(
+        {
+          ...raw,
+          committed_tx:
+            ("committed_tx" in payload && payload.committed_tx) || raw.committed_tx,
+        },
+        budget,
+      );
       const passed = record.policyChecks?.filter((c) => c.passed).length ?? 0;
       const total = record.policyChecks?.length ?? 0;
+      const commitError =
+        payload && typeof payload === "object" && "commit_error" in payload
+          ? payload.commit_error
+          : undefined;
       set((s) => ({
         pipelineStage: 3,
         activeDecision: s.activeDecision
@@ -194,14 +213,23 @@ function handleBackendEvent(
           : record,
       }));
       pushEvent(set, get, "policy.approved", `Policy: ${passed}/${total} checks passed.`);
-      pushEvent(
-        set,
-        get,
-        "decision.committed",
-        record.txPre
-          ? `Reasoning anchored on Algorand · ${record.txPre.slice(0, 10)}…`
-          : "Reasoning committed.",
-      );
+      if (record.txPre) {
+        pushEvent(
+          set,
+          get,
+          "decision.committed",
+          `Reasoning anchored on Algorand · ${record.txPre.slice(0, 10)}…`,
+        );
+      } else if (commitError) {
+        pushEvent(
+          set,
+          get,
+          "decision.committed",
+          `Algorand commit failed · ${commitError}`,
+        );
+      } else {
+        pushEvent(set, get, "decision.committed", "Reasoning committed (no on-chain tx).");
+      }
       break;
     }
     case "payment.sent": {
@@ -212,7 +240,12 @@ function handleBackendEvent(
         settlement_tx?: string;
         error?: string;
       };
-      set({ pipelineStage: 4 });
+      set((s) => ({
+        pipelineStage: 4,
+        activeDecision: s.activeDecision && payload.settlement_tx
+          ? { ...s.activeDecision, settlementTx: payload.settlement_tx }
+          : s.activeDecision,
+      }));
       if (payload.paid) {
         pushEvent(
           set,

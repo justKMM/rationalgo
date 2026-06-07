@@ -67,6 +67,7 @@ type DecisionRecord struct {
 	Status        DecisionStatus `json:"status"`
 	ReasoningHash string         `json:"reasoning_hash"`
 	CommittedTx   string         `json:"committed_tx,omitempty"`
+	SettlementTx  string         `json:"settlement_tx,omitempty"`
 	OutcomeTx     string         `json:"outcome_tx,omitempty"`
 	Outcome       *OutcomeRecord `json:"outcome,omitempty"`
 	Timestamp     int64          `json:"timestamp"`
@@ -92,6 +93,8 @@ func (r DecisionRecord) ToDecision() Decision {
 		ReasoningHash: r.ReasoningHash,
 		Timestamp:     r.Timestamp,
 		CommittedTx:   r.CommittedTx,
+		SettlementTx:  r.SettlementTx,
+		OutcomeTx:     r.OutcomeTx,
 	}
 	if !r.Policy.Approved {
 		d.BlockedReason = r.Policy.BlockReason
@@ -158,6 +161,8 @@ type Decision struct {
 	Outcome       *Outcome            `json:"outcome,omitempty"`
 	BlockedReason string              `json:"blockedReason,omitempty"`
 	CommittedTx   string              `json:"committedTx,omitempty"`
+	SettlementTx  string              `json:"settlementTx,omitempty"`
+	OutcomeTx     string              `json:"outcomeTx,omitempty"`
 	ExplorerURL   string              `json:"explorerUrl,omitempty"`
 }
 
