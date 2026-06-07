@@ -257,7 +257,6 @@ func buildPrompt(intent string, vendors []models.VendorOption, policy models.Pol
 	sb.WriteString("\nPolicy result:\n")
 	sb.WriteString(fmt.Sprintf("- Approved: %v\n", policy.Approved))
 	sb.WriteString(fmt.Sprintf("- Budget OK: %v\n", policy.BudgetOK))
-	sb.WriteString(fmt.Sprintf("- Vendor on allowlist: %v\n", policy.VendorAllowed))
 	sb.WriteString(fmt.Sprintf("- Price anomaly: %v\n", policy.PriceAnomaly))
 	if policy.BlockReason != "" {
 		sb.WriteString(fmt.Sprintf("- Block reason: %s\n", policy.BlockReason))
@@ -299,7 +298,7 @@ Rules:
 - VendorChosen must be copied exactly from the vendor list above (same name, url, etc.)
 - List every non-chosen vendor in Alternatives with a specific, data-driven rejection reason
 - Confidence is 0.0-1.0 reflecting how certain you are the chosen vendor is the right call
-- If policy blocked a vendor (allowlist or anomaly), that vendor must appear in Alternatives
+- If policy blocked a purchase (budget or price anomaly), that vendor must appear in Alternatives
   with reason_rejected explaining the policy issue
 `)
 

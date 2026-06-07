@@ -41,23 +41,11 @@ func (r *Registry) GetByID(id string) (*Vendor, bool) {
 	return nil, false
 }
 
-// AllowedVendors returns vendors marked Allowed=true (policy allowlist input).
-func (r *Registry) AllowedVendors() []Vendor {
-	var out []Vendor
-	for _, v := range r.vendors {
-		if v.Allowed {
-			out = append(out, v)
-		}
-	}
-	return out
-}
-
 // Future integration (store/seed.go, agent discovery, hero demo):
 //
 //	reg := catalog.NewRegistry(cfg.PublicBaseURL())
 //	research := reg.GetByCategory(catalog.CategoryCompanyResearch)
 //	chosen, _ := reg.GetByID("company-basic-info")
-//	allowed := reg.AllowedVendors()
 //
 // Dashboard seed data can derive vendor names, prices, and trust scores from the
 // registry instead of duplicating literals.

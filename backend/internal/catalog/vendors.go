@@ -17,7 +17,6 @@ type Vendor struct {
 	TrustScore   float64
 	SuccessRate  float64
 	AvgLatencyMs int
-	Allowed      bool
 	EndpointURL  string
 	Tags         []string
 }
@@ -63,7 +62,6 @@ func defaultVendors(baseURL string) []Vendor {
 			TrustScore:   conf * 100,
 			SuccessRate:  conf,
 			AvgLatencyMs: meta.LatencyEstMs,
-			Allowed:      true,
 			EndpointURL:  baseURL + meta.Path,
 			Tags:         []string{CategoryCompanyResearch, "x402", "paid", name},
 		})

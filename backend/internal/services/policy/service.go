@@ -8,27 +8,21 @@ import (
 
 const anomalyMultiplier = 5.0
 
-// Evaluate checks budget, allowlist, and price anomaly for a vendor spend.
+// Evaluate checks budget and price anomaly for a vendor spend.
 func Evaluate(
 	chosen models.VendorOption,
 	amountEURQ, dailySpent, dailyLimit float64,
-	allowedVendors []string,
 	priceHistory map[string][]float64,
 ) models.PolicyResult {
 	result := models.PolicyResult{
 		Approved:      true,
 		BudgetOK:      dailySpent+amountEURQ <= dailyLimit,
-		VendorAllowed: isAllowed(chosen.Name, allowedVendors),
+		VendorAllowed: true,
 	}
 
 	if !result.BudgetOK {
 		result.Approved = false
 		result.BlockReason = "Daily spend limit exceeded"
-		return result
-	}
-	if !result.VendorAllowed {
-		result.Approved = false
-		result.BlockReason = "Vendor not on allowlist"
 		return result
 	}
 
@@ -43,15 +37,6 @@ func Evaluate(
 	}
 
 	return result
-}
-
-func isAllowed(name string, allowed []string) bool {
-	for _, v := range allowed {
-		if v == name {
-			return true
-		}
-	}
-	return false
 }
 
 func medianPrice(prices []float64) float64 {

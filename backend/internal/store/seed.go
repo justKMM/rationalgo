@@ -62,12 +62,12 @@ func Seed() models.AppState {
 				AmountEURQ: 0.9,
 				Intent:     "Competitor pricing scrape, rotating residential proxy",
 				Alternatives: []models.LegacyAlternative{
-					{Name: "RateIntel", Reason: "allowlisted but quote 3× higher"},
+					{Name: "RateIntel", Reason: "same dataset @ lower quote when price normalizes"},
 				},
 				ExpectedValue: "—", Confidence: 0.41,
-				Policy: models.PolicyChecks{BudgetOk: true, Reputation: 1.8, Anomaly: "none", VendorAllowed: false},
+				Policy: models.PolicyChecks{BudgetOk: true, Reputation: 1.8, Anomaly: "flagged", VendorAllowed: true},
 				ReasoningHash: mockHash(), Round: mockRound(), Timestamp: now - 2*60*1000,
-				BlockedReason: "Vendor not on allowlist; reputation below 2.5 threshold",
+				BlockedReason: "Price anomaly: current quote exceeds 5× 7-day median",
 			},
 		},
 		Vendors: []models.Vendor{
@@ -77,8 +77,6 @@ func Seed() models.AppState {
 			{Name: "FuelPriceAPI", Score: 4.0},
 			{Name: "MetricsHub.xyz", Score: 1.1},
 		},
-		AllowedVendors: []string{"OSRM-Pro", "TollGuru", "WeatherAPI", "FuelPriceAPI", "RateIntel"},
-		BlockedVendors: []string{"ScrapeShack", "MetricsHub.xyz"},
 		Alerts: []models.Alert{
 			{
 				ID: "a1", Level: "amber",

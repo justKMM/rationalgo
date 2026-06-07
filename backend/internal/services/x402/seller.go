@@ -86,7 +86,7 @@ func (s *Seller) Protect(meta PriceInfo, next http.HandlerFunc) http.HandlerFunc
 		}
 
 		if _, err := s.client.SubmitSignedTxn(r.Context(), raw); err != nil {
-			s.respondPaymentRequired(w, meta, fmt.Sprintf("settlement failed: %v", err))
+			s.respondPaymentRequired(w, meta, humanizeSettlementError(fmt.Sprintf("settlement failed: %v", err)))
 			return
 		}
 

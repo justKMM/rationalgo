@@ -128,3 +128,15 @@ func feePayerFromExtra(extra map[string]any) string {
 	}
 	return v
 }
+
+// humanizeSettlementError turns common algod settlement failures into actionable demo hints.
+func humanizeSettlementError(reason string) string {
+	lower := strings.ToLower(reason)
+	if strings.Contains(lower, "underflow") && strings.Contains(lower, "sender amount 0") {
+		return "wallet has 0 testnet USDC (ASA 10458941): in Pera (Testnet), opt into USDC and receive test tokens, then retry"
+	}
+	if strings.Contains(lower, "must optin") || strings.Contains(lower, "asset not found") {
+		return "wallet not opted into settlement ASA 10458941 — opt in via Pera (Testnet) and retry"
+	}
+	return reason
+}

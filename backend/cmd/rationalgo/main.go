@@ -176,6 +176,11 @@ func printStatus(cfg config.Config) {
 		return
 	}
 	fmt.Printf("account:     %s\n", util.AccountURL(cfg.WalletAddress))
+	if err := cfg.ValidateForSeller(); err != nil {
+		fmt.Printf("x402 seller: no — %v\n", err)
+	} else {
+		fmt.Printf("x402 seller: %s\n", cfg.SellerWalletAddressEffective())
+	}
 	fmt.Println("spike ready: yes")
 	fmt.Println()
 	printUsage()
