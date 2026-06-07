@@ -77,21 +77,20 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Rationale — Agent Decision Audit" },
-      { name: "description", content: "Tamper-evident reasoning for autonomous agent spend on Algorand via x402." },
-      { name: "author", content: "Rationale" },
-      { property: "og:title", content: "Rationale — Agent Decision Audit" },
-      { property: "og:description", content: "Why your agent spent — committed on-chain before the outcome is known." },
+      { title: "RationAlgo — Mission Control" },
+      { name: "description", content: "Algorand-native governance and transparency layer for agentic commerce." },
+      { property: "og:title", content: "RationAlgo — Mission Control" },
+      { property: "og:description", content: "Live oversight for AI agents spending via x402, anchored on Algorand." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
-      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "" },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap",
       },
     ],
   }),
@@ -100,7 +99,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   notFoundComponent: NotFoundComponent,
   errorComponent: ErrorComponent,
 });
-
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
@@ -115,6 +113,7 @@ function RootShell({ children }: { children: ReactNode }) {
     </html>
   );
 }
+
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
