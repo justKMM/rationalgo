@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"rationalgo/internal/config"
 	"rationalgo/internal/models"
@@ -17,17 +16,23 @@ import (
 type Service struct {
 	cfg              config.Config
 	httpClient       *http.Client
+	algClient        *algorand.Client
 	lastSettlementTx string
 }
 
-// NewService creates an x402 client service.
-func NewService(cfg config.Config) *Service {
-	return &Service{
+// NewService creates an x402 client service. Pass algClient when the server already
+// holds a wallet-connected client (hero demo); otherwise PayAndFetch builds one on demand.
+func NewService(cfg config.Config, algClient ...*algorand.Client) *Service {
+	s := &Service{
 		cfg: cfg,
 		httpClient: &http.Client{
-			Timeout: 45 * time.Second,
+			Timeout: cfg.X402HTTPTimeout(),
 		},
 	}
+	if len(algClient) > 0 {
+		s.algClient = algClient[0]
+	}
+	return s
 }
 
 // LastSettlementTx returns the on-chain tx id from the most recent PayAndFetch.
@@ -79,7 +84,7 @@ func (s *Service) PayAndFetch(ctx context.Context, url string, amountEURQ float6
 		return nil, fmt.Errorf("x402: url is empty")
 	}
 
-	algClient, err := algorand.NewClient(s.cfg)
+	algClient, err := s.algorandClient()
 	if err != nil {
 		return nil, fmt.Errorf("x402: wallet required for payment: %w", err)
 	}
@@ -166,11 +171,23 @@ func paymentRequiredHeader(h http.Header) string {
 func paymentRejectionReason(h http.Header, body []byte) string {
 	if hdr := paymentRequiredHeader(h); hdr != "" {
 		if req, err := decodePaymentRequired(hdr); err == nil && req.Error != "" {
-			return req.Error
+			return humanizeSettlementError(req.Error)
 		}
 	}
 	if trimmed := strings.TrimSpace(string(body)); trimmed != "" {
-		return trimmed
+		return humanizeSettlementError(trimmed)
 	}
 	return "payment rejected"
+}
+
+func (s *Service) algorandClient() (*algorand.Client, error) {
+	if s.algClient != nil {
+		return s.algClient, nil
+	}
+	client, err := algorand.NewClient(s.cfg)
+	if err != nil {
+		return nil, err
+	}
+	s.algClient = client
+	return client, nil
 }

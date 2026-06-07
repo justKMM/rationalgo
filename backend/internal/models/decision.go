@@ -25,7 +25,6 @@ type VendorOption struct {
 	TrustScore   float64 `json:"trust_score"`
 	SuccessRate  float64 `json:"success_rate"`
 	AvgLatencyMs int     `json:"avg_latency_ms,omitempty"`
-	Allowed      bool    `json:"allowed"`
 	Description  string  `json:"description,omitempty"`
 }
 
@@ -68,6 +67,7 @@ type DecisionRecord struct {
 	Status        DecisionStatus `json:"status"`
 	ReasoningHash string         `json:"reasoning_hash"`
 	CommittedTx   string         `json:"committed_tx,omitempty"`
+	SettlementTx  string         `json:"settlement_tx,omitempty"`
 	OutcomeTx     string         `json:"outcome_tx,omitempty"`
 	Outcome       *OutcomeRecord `json:"outcome,omitempty"`
 	Timestamp     int64          `json:"timestamp"`
@@ -93,6 +93,8 @@ func (r DecisionRecord) ToDecision() Decision {
 		ReasoningHash: r.ReasoningHash,
 		Timestamp:     r.Timestamp,
 		CommittedTx:   r.CommittedTx,
+		SettlementTx:  r.SettlementTx,
+		OutcomeTx:     r.OutcomeTx,
 	}
 	if !r.Policy.Approved {
 		d.BlockedReason = r.Policy.BlockReason
@@ -159,6 +161,8 @@ type Decision struct {
 	Outcome       *Outcome            `json:"outcome,omitempty"`
 	BlockedReason string              `json:"blockedReason,omitempty"`
 	CommittedTx   string              `json:"committedTx,omitempty"`
+	SettlementTx  string              `json:"settlementTx,omitempty"`
+	OutcomeTx     string              `json:"outcomeTx,omitempty"`
 	ExplorerURL   string              `json:"explorerUrl,omitempty"`
 }
 
@@ -182,10 +186,8 @@ type AppState struct {
 	Balance        float64    `json:"balance"`
 	Spent          float64    `json:"spent"`
 	DailyLimit     float64    `json:"dailyLimit"`
-	Decisions      []Decision `json:"decisions"`
-	Vendors        []Vendor   `json:"vendors"`
-	AllowedVendors []string   `json:"allowedVendors"`
-	BlockedVendors []string   `json:"blockedVendors"`
-	Alerts         []Alert    `json:"alerts"`
+	Decisions []Decision `json:"decisions"`
+	Vendors   []Vendor   `json:"vendors"`
+	Alerts    []Alert    `json:"alerts"`
 	SelectedID     *string    `json:"selectedId"`
 }

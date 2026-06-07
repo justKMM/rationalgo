@@ -29,6 +29,7 @@ const (
 	EventDecisionOutcome   EventType = "decision.outcome"
 	EventDecisionBlocked   EventType = "decision.blocked"
 	EventAlertFired        EventType = "alert.fired"
+	EventResearchPlan      EventType = "research.plan"
 	EventResearchSummary   EventType = "research.summary"
 )
 
@@ -66,8 +67,7 @@ type Deps struct {
 	X402       X402Payer
 	Store      *repository.Store
 	Vendors    func() []models.VendorOption
-	Policy     func(models.VendorOption, float64, float64, float64, []string, map[string][]float64) models.PolicyResult
-	Allowed    func() []string
+	Policy     func(models.VendorOption, float64, float64, float64, map[string][]float64) models.PolicyResult
 	PriceHist  func() map[string][]float64
 	Inject     func(map[string][]float64, string, float64) map[string][]float64
 	AgentID    string
@@ -130,6 +130,21 @@ func runScenario(ctx context.Context, scenario ScenarioType, deps Deps, ch chan<
 		return
 	}
 
+	planVendors := make([]map[string]interface{}, len(plan))
+	for i, step := range plan {
+		planVendors[i] = map[string]interface{}{
+			"id":         step.vendor.ID,
+			"name":       step.vendor.Name,
+			"price_eurq": step.vendor.PriceEURQ,
+			"order":      i + 1,
+		}
+	}
+	emit(EventResearchPlan, map[string]interface{}{
+		"company":     reasoning.DemoCompany,
+		"budget_eurq": budget,
+		"vendors":     planVendors,
+	})
+
 	priceHist := deps.PriceHist()
 	if scenario == ScenarioAnomaly && deps.Inject != nil {
 		priceHist = deps.Inject(priceHist, plan[0].vendor.ID, 10)
@@ -147,14 +162,12 @@ func runScenario(ctx context.Context, scenario ScenarioType, deps Deps, ch chan<
 		if err != nil {
 			return
 		}
-		emit(EventDecisionPending, record)
 
 		policyResult := deps.Policy(
 			chosen,
 			chosen.PriceEURQ,
 			spent,
 			budget,
-			deps.Allowed(),
 			priceHist,
 		)
 		record.Policy = policyResult
@@ -164,6 +177,8 @@ func runScenario(ctx context.Context, scenario ScenarioType, deps Deps, ch chan<
 			return
 		}
 		record.ReasoningHash = hash
+
+		emit(EventDecisionPending, record)
 
 		if !policyResult.Approved {
 			record.Status = models.StatusBlocked
@@ -197,11 +212,15 @@ func runScenario(ctx context.Context, scenario ScenarioType, deps Deps, ch chan<
 				Confidence:   record.Confidence,
 				CommittedAt:  time.Now().Unix(),
 			}
-			txID, err := deps.Algorand.CommitProvenance(env)
-			if err == nil {
+			txID, commitErr := deps.Algorand.CommitProvenance(env)
+			if commitErr == nil {
 				record.CommittedTx = txID
-				emit(EventDecisionCommitted, record)
 			}
+			emit(EventDecisionCommitted, map[string]interface{}{
+				"record":       record,
+				"committed_tx": record.CommittedTx,
+				"commit_error": commitErrString(commitErr),
+			})
 		}
 
 		// actualConfidence falls back to the catalog's advertised SuccessRate if payment
@@ -222,6 +241,7 @@ func runScenario(ctx context.Context, scenario ScenarioType, deps Deps, ch chan<
 				payload["bytes"] = len(body)
 				if tx := deps.X402.LastSettlementTx(); tx != "" {
 					payload["settlement_tx"] = tx
+					record.SettlementTx = tx
 				}
 				var env researchEnvelope
 				if jsonErr := json.Unmarshal(body, &env); jsonErr == nil && env.Confidence > 0 {
@@ -355,4 +375,11 @@ func researchPayURL(endpointURL, company string) string {
 		sep = "&"
 	}
 	return endpointURL + sep + "company=" + url.QueryEscape(company)
+}
+
+func commitErrString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }

@@ -70,7 +70,6 @@ func toOption(v catalog.Vendor) models.VendorOption {
 		TrustScore:   v.TrustScore,
 		SuccessRate:  v.SuccessRate,
 		AvgLatencyMs: v.AvgLatencyMs,
-		Allowed:      v.Allowed,
 		Description:  v.Description,
 	}
 }

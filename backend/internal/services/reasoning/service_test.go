@@ -26,7 +26,6 @@ func TestGenerateDecision_Integration(t *testing.T) {
 		vendors[0].PriceEURQ,
 		0.0,
 		10.0,
-		[]string{vendors[0].Name, vendors[1].Name},
 		vendorSvc.GetPriceHistory(),
 	)
 

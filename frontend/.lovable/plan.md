@@ -1,115 +1,123 @@
-# Rationale — Agent Decision Audit Dashboard
 
-A single-page, frontend-only demo. All state in React, all hashes/amounts mocked. Dark, dense, technical "control room" aesthetic — explicitly not a SaaS landing page.
+## RationAlgo — Mission Control Frontend
 
-## Scope
+A dark, fintech/cybersecurity mission-control UI for an Algorand-native governance layer over agentic x402 payments. Desktop-first, mock data only, no backend.
 
-- One route: replace `src/routes/index.tsx` with the dashboard.
-- No backend, no Cloud, no blockchain calls. Pure React state + `setTimeout` for the scripted demo.
-- Update `__root.tsx` head meta (title "Rationale — Agent Decision Audit", description) and load JetBrains Mono via `<link>` in the root head; register `--font-mono` and `--font-sans` in `src/styles.css` `@theme`.
+### Stack note
+The project is on **TanStack Start + Tailwind v4 + shadcn/ui** (not vanilla Vite React Router). I'll honor that: file-based routes under `src/routes/`, tokens in `src/styles.css` under `@theme`, no `tailwind.config.js`. Functionally identical to the brief.
 
-## Design tokens (src/styles.css)
+### Design direction
+- Dark by default. Near-black base (`oklch(0.16 0.02 260)`), elevated panels, hairline borders.
+- Accent: electric cyan/teal for "live/verified", amber for "pending", red for "blocked".
+- Mono display font (JetBrains Mono) for IDs/tx hashes/timestamps; Inter for body.
+- Subtle scanline / grid background on the shell, pulsing status dots, animated pipeline progression.
+- Motion via framer-motion: stage activation, reasoning feed slide-in, decision card swap.
 
-Override `:root` and `.dark` with the control-room palette; default the app to dark (add `class="dark"` on `<html>` in `__root.tsx`).
+### Routes
+```
+src/routes/
+  __root.tsx              # shell: top bar, grid background, providers
+  index.tsx               # Mission Control (main screen)
+```
+Decision details = **Sheet/Drawer** (shadcn `sheet`) opened from the history table, not a route. Trust Metrics = strip of 4 KPI cards on the same page above the history table (per brief: "Trust Metrics Panel" with 4 KPIs only).
 
-- `--background: oklch(0.16 0.005 250)` (~#0B0D0F)
-- `--foreground: oklch(0.95 0 0)`
-- `--card: oklch(0.19 0.005 250)`
-- `--muted-foreground: oklch(0.62 0.01 250)`
-- `--border: oklch(0.28 0.005 250)` (thin 1px dividers)
-- `--primary` / accent-approved: `oklch(0.82 0.21 150)` (~#3DDC84 electric green)
-- `--destructive` / blocked: `oklch(0.62 0.22 25)` (red)
-- `--accent-alert: oklch(0.78 0.16 75)` (amber)
-- Tabular numerals utility via `@utility tnum { font-variant-numeric: tabular-nums; }`
-- Subtle `@keyframes fade-in-up` already available via existing animations.
-
-## Layout
-
-```text
+### Layout (single screen)
+```
 ┌─────────────────────────────────────────────────────────────┐
-│ TOP BAR: fleet-router-01 │ EURQ 9.41 │ spent 0.59/10 │ [Run]│
-├──────────────────────────────────────────┬──────────────────┤
-│                                          │  POLICY          │
-│   DECISION FEED (newest on top)          │  - daily limit   │
-│   ┌──────────────────────────────────┐   │  - allowed       │
-│   │ vendor ● APPROVED   0.12 EURQ    │   │  - blocked       │
-│   │ intent line…                     │   │  - alerts        │
-│   │ 🔒 0xa31f…b2 committed  12:04:31 │   ├──────────────────┤
-│   └──────────────────────────────────┘   │  VENDOR TRUST    │
-│   …                                      │  WeatherAPI 4.2  │
-│                                          │  …               │
-└──────────────────────────────────────────┴──────────────────┘
-       (drawer slides in from right on card click)
+│ TOP BAR  RationAlgo • ●ONLINE   [Normal] [Anomaly] [Reset]  │
+├──────────────┬──────────────────────────┬───────────────────┤
+│ Reasoning    │  Active Decision Card    │  Trust Pipeline   │
+│ Feed         │  task / vendor / cost    │  6 vertical       │
+│ (chat-like   │  confidence meter        │  stages, activate │
+│  timeline)   │  policy + decision state │  in sequence      │
+│              │                          │                   │
+├──────────────┴──────────────────────────┴───────────────────┤
+│  [Trust Score] [Successful] [Blocked] [Violations Prev.]    │
+├─────────────────────────────────────────────────────────────┤
+│ Decision History Table (click row → Drawer)                 │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-- CSS grid: `grid-cols-[1fr_360px]`, `gap-px bg-border` for hairline dividers between zones.
-- Drawer: fixed right overlay, ~520px, scrollable, overlays the right rail. Close on backdrop click / Esc.
-
-## Component breakdown (all under `src/components/rationale/`)
-
-- `TopBar.tsx` — agent name, EURQ balance (mono), `SpendGauge` (thin horizontal bar), `RunDemoButton`, `ResetButton`.
-- `DecisionFeed.tsx` — maps decisions, renders `DecisionCard`.
-- `DecisionCard.tsx` — vendor, `StatusPill` (APPROVED/BLOCKED/PENDING), amount mono, intent line, commit row (truncated hash + lock icon + "reasoning committed pre-outcome"), timestamp. `animate-fade-in` on mount.
-- `DecisionDrawer.tsx` — full record: intent, alternatives list (each with rejection reason), expected value, confidence, cost, policy checks (budget/reputation/anomaly), on-chain reasoning hash + round number, `OutcomeBlock` (renders once `decision.outcome` is set).
-- `PolicyPanel.tsx` — daily limit row, allowed vendors, blocked vendors, alerts list (amber rows).
-- `VendorTrustPanel.tsx` — list of 4-5 vendors, score (mono), tiny predicted-vs-actual sparkline-style indicator (▲/▼ + delta) that animates on update.
-- `lib/mock.ts` — seed data, hash generator (`0x` + 6 hex … 4 hex), types.
-- `lib/demoScenario.ts` — function `runDemo(dispatch)` orchestrating the 5 steps with timeouts.
-
-## State shape
-
-```ts
-type Decision = {
-  id: string;
-  vendor: string;
-  status: 'APPROVED' | 'BLOCKED' | 'PENDING';
-  amountEURQ: number;
-  intent: string;
-  alternatives: { name: string; reason: string }[];
-  expectedValue: string;       // "+23% routing confidence"
-  confidence: number;          // 0.81
-  policy: { budgetOk: boolean; reputation: number; anomaly: 'none'|'flagged' };
-  reasoningHash: string;       // mocked
-  round: number;               // mocked Algorand round
-  timestamp: number;
-  outcome?: { predicted: string; actual: string; verdict: string; trustDelta: number };
-};
+### Component architecture
+```
+src/
+  components/
+    mission-control/
+      TopBar.tsx              # name, status dot, scenario buttons
+      ReasoningFeed.tsx       # left panel, animated event list
+      ActiveDecisionCard.tsx  # center panel
+      TrustPipeline.tsx       # right panel, 6 stages
+      TrustMetrics.tsx        # 4 KPI cards
+      DecisionHistoryTable.tsx
+      DecisionDetailsDrawer.tsx
+      StageNode.tsx           # one pipeline stage
+      ConfidenceMeter.tsx
+      StatusPill.tsx          # approved/blocked/verified/pending/failed
+      TxHash.tsx              # truncated mono hash w/ copy
+    ui/                       # existing shadcn
+  lib/
+    mock/
+      scenarios.ts            # normal + anomaly scripted event sequences
+      decisions.ts            # seed DecisionRecord history
+      generators.ts           # fake tx hashes, vendors, timestamps
+    types.ts                  # DecisionRecord, ScenarioEvent, PipelineStage
+  hooks/
+    useScenarioRunner.ts      # drives event playback + pipeline state
+    useMissionStore.ts        # zustand store (events, active decision, history, metrics)
 ```
 
-Single `useReducer` in `index.tsx` managing `{ decisions, balance, spent, vendors, alerts, selectedId }`. Actions: `ADD_DECISION`, `UPDATE_DECISION`, `SET_OUTCOME`, `ADJUST_TRUST`, `ADD_ALERT`, `RESET`.
+### State management
+Lightweight **zustand** store (`useMissionStore`):
+- `events: ScenarioEvent[]`
+- `activeDecision: DecisionRecord | null`
+- `pipelineStage: 0..6` (0 = idle)
+- `history: DecisionRecord[]`
+- `metrics: { trustScore, successful, blocked, violationsPrevented }`
+- actions: `runScenario('normal'|'anomaly')`, `reset()`, `selectHistory(id)`
 
-## Demo scenario (≈10s)
+`useScenarioRunner` orchestrates a scripted timeline with `setTimeout` ticks (~600–900ms per stage) to:
+1. push reasoning events into the feed,
+2. advance `pipelineStage`,
+3. mutate the active decision (policy result, tx hashes, outcome),
+4. on completion, prepend to history + update metrics.
 
-Triggered by `Run demo scenario`:
+### Scenarios
+- **Normal**: agent reasons → policy approved → pre-tx committed → x402 paid → outcome verified → post-tx committed. Confidence ~0.92.
+- **Anomaly**: agent reasons → policy **blocked** (budget/vendor-reputation violation) → `alert.fired`, no payment, violations counter +1. Or alt: approved → payment sent → outcome **failed** → post-tx records failure.
+- Reset clears active decision + pipeline; keeps seeded history.
 
-- t=0: dispatch `ADD_DECISION` (PENDING) for WeatherAPI, 0.12 EURQ, intent "Task needs 24h weather forecast for route optimization". Card slides in. Auto-open drawer.
-- t=0.4s: populate alternatives + expected value in drawer (already in payload; reveal via small staged animation).
-- t=1.2s: flip to APPROVED, set `reasoningHash`, decrement balance by 0.12, advance spend gauge.
-- t=5s: `SET_OUTCOME` predicted +23% / actual +25%, verdict "Good purchase"; `ADJUST_TRUST` WeatherAPI +0.1 (tick ▲ in right rail).
-- t=7s: `ADD_DECISION` from unknown vendor "MetricsHub.xyz" at 1.20 EURQ (10× normal), immediately BLOCKED red card; `ADD_ALERT` amber: "MetricsHub.xyz price +1000% vs 7d avg — flagged".
+### Mock data
+- 12 seeded historical decisions across vendors (OpenAI API, AWS S3, Stripe top-up, Twilio SMS, Pinecone, Replicate, etc.), realistic USD costs, mix of approved/blocked/verified/failed.
+- Algorand-style tx hashes: 52-char base32 uppercase via generator.
+- Timestamps within last 24h.
 
-`Reset demo` clears scenario-added items and restores seed state + balance/spent.
+### Design tokens (added to `src/styles.css`)
+```
+--background: oklch(0.16 0.02 260)
+--panel:      oklch(0.20 0.02 260)
+--border:     oklch(0.28 0.02 260)
+--accent:     oklch(0.78 0.16 195)   /* cyan */
+--success:    oklch(0.72 0.18 155)
+--warn:       oklch(0.80 0.16 75)
+--danger:     oklch(0.65 0.22 25)
+--mono font: JetBrains Mono via <link> in __root head
+```
 
-## Seed data (4 prior decisions)
+### Drawer contents (DecisionDetailsDrawer)
+- Decision ID (mono), timestamp
+- Reasoning summary (multi-line)
+- Policy results (list with pass/fail chips: budget, vendor allow-list, rate limit, risk)
+- Predicted vs actual outcome (side-by-side)
+- Pre-payment TX (hash + "View on Algorand" stub link)
+- Post-outcome TX (same)
 
-Pre-populate feed with realistic vendor/intent pairs, e.g.:
-- OSRM-Pro — 0.08 EURQ — "Recompute route after traffic spike on A4" — APPROVED
-- TollGuru — 0.04 EURQ — "Toll cost lookup BE→NL corridor" — APPROVED
-- FuelPriceAPI — 0.15 EURQ — "Fuel index for fleet rebalancing" — APPROVED
-- ScrapeShack — 0.90 EURQ — "Competitor pricing scrape" — BLOCKED (vendor not allowlisted)
+### What I will NOT build
+- No auth, no real Algorand/x402 calls, no backend.
+- No charts / analytics dashboard look.
+- No extra routes beyond the single mission-control screen + drawer.
 
-Vendors in trust panel: WeatherAPI 4.2, OSRM-Pro 4.7, TollGuru 4.5, FuelPriceAPI 4.0, MetricsHub.xyz 1.1.
+### Verification
+- Typecheck/build runs automatically.
+- Visually verify both scenarios end-to-end in the preview, drawer opens from history row, reset returns to idle state.
 
-## Out of scope
-
-- Real Algorand SDK, x402 wiring, wallets, persistence, auth.
-- Mobile layout polish beyond "doesn't break" (desktop-first control room).
-- Tests.
-
-## Files touched
-
-- `src/routes/index.tsx` (rewrite)
-- `src/routes/__root.tsx` (head meta + JetBrains Mono link + `<html class="dark">`)
-- `src/styles.css` (palette overrides, mono token, tnum utility)
-- New: `src/components/rationale/{TopBar,DecisionFeed,DecisionCard,DecisionDrawer,PolicyPanel,VendorTrustPanel,StatusPill,SpendGauge}.tsx`
-- New: `src/lib/rationale/{types.ts,mock.ts,demoScenario.ts,reducer.ts}`
+Ready to switch to build mode and implement.

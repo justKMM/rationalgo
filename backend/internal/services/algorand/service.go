@@ -1,6 +1,7 @@
 package algorand
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -28,7 +29,7 @@ func NewService(cfg config.Config) (*Service, error) {
 
 // RunSpike commits a sample decision hash to Algorand Testnet (Phase 0).
 func (s *Service) RunSpike() (models.AlgorandSpikeResult, error) {
-	info, err := s.client.AccountInfo()
+	info, err := s.client.AccountInfo(context.Background())
 	if err != nil {
 		return models.AlgorandSpikeResult{}, fmt.Errorf("account info: %w", err)
 	}
@@ -60,7 +61,7 @@ func (s *Service) RunSpike() (models.AlgorandSpikeResult, error) {
 
 // RunProvenanceSpike commits a sample RAv1 envelope to Algorand Testnet.
 func (s *Service) RunProvenanceSpike() (models.AlgorandSpikeResult, error) {
-	info, err := s.client.AccountInfo()
+	info, err := s.client.AccountInfo(context.Background())
 	if err != nil {
 		return models.AlgorandSpikeResult{}, fmt.Errorf("account info: %w", err)
 	}
