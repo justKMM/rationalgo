@@ -72,7 +72,7 @@ func (s *Service) RunProvenanceSpike() (models.AlgorandSpikeResult, error) {
 
 	record := map[string]any{
 		"intent": reasoningDemoIntent(),
-		"vendor": "goplausible-weather",
+		"vendor": "company-basic-info",
 		"phase":  "provenance-spike",
 	}
 	decisionHash, err := decision.HashCanonicalJSON(record)
@@ -82,14 +82,14 @@ func (s *Service) RunProvenanceSpike() (models.AlgorandSpikeResult, error) {
 
 	env := &provenance.Envelope{
 		Version:      1,
-		AgentID:      "drone-ops-01",
+		AgentID:      "research-agent-01",
 		SessionID:    fmt.Sprintf("spike-%d", time.Now().Unix()),
 		TaskHash:     taskHash,
 		DecisionHash: decisionHash,
-		Vendor:       "goplausible-weather",
-		AmountEURQ:   0.001,
+		Vendor:       "company-basic-info",
+		AmountEURQ:   0.01,
 		Intent:       reasoningDemoIntent(),
-		Expected:     "91% forecast accuracy",
+		Expected:     "92% confidence basic company facts",
 		Confidence:   0.87,
 		CommittedAt:  time.Now().Unix(),
 	}
@@ -109,6 +109,6 @@ func (s *Service) RunProvenanceSpike() (models.AlgorandSpikeResult, error) {
 }
 
 func reasoningDemoIntent() string {
-	return "Should drone deliveries operate in Frankfurt in the next 2 hours?"
+	return "Research Atlas Robotics GmbH within a €1.00 data budget — which paid sources are worth buying?"
 }
 

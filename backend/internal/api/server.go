@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"rationalgo/internal/services/outcome"
 	"rationalgo/internal/services/policy"
 	"rationalgo/internal/services/reasoning"
+	"rationalgo/internal/services/research"
 	"rationalgo/internal/services/vendor"
 	"rationalgo/internal/services/x402"
 )
@@ -26,6 +28,7 @@ type Server struct {
 	store        *repository.Store
 	deps         scenario.Deps
 	reasoningSvc *reasoning.Service
+	seller       *x402.Seller
 	mux          *http.ServeMux
 }
 
@@ -37,6 +40,7 @@ func NewServer(cfg config.Config, reasoningSvc *reasoning.Service) *Server {
 		store:        store,
 		deps:         buildDeps(cfg, store, reasoningSvc),
 		reasoningSvc: reasoningSvc,
+		seller:       buildSeller(cfg),
 		mux:          http.NewServeMux(),
 	}
 	s.routes()
@@ -44,7 +48,7 @@ func NewServer(cfg config.Config, reasoningSvc *reasoning.Service) *Server {
 }
 
 func buildDeps(cfg config.Config, store *repository.Store, reasoningSvc *reasoning.Service) scenario.Deps {
-	vendors := vendor.NewService()
+	vendors := vendor.NewService(cfg.PublicBaseURL())
 	state := store.State()
 
 	var algClient scenario.AlgorandCommitter
@@ -58,7 +62,7 @@ func buildDeps(cfg config.Config, store *repository.Store, reasoningSvc *reasoni
 		Algorand:   algClient,
 		X402:       x402.NewService(cfg),
 		Store:      store,
-		Vendors:    vendors.GetDemoWeatherVendors,
+		Vendors:    vendors.GetResearchEndpoints,
 		Policy:     policy.Evaluate,
 		Allowed:    func() []string { return state.AllowedVendors },
 		PriceHist:  vendors.GetPriceHistory,
@@ -69,6 +73,27 @@ func buildDeps(cfg config.Config, store *repository.Store, reasoningSvc *reasoni
 	}
 }
 
+// buildSeller constructs the x402 seller that protects /company/* — it opts the wallet
+// into the settlement ASA and resolves the network identifier on-chain. Returns nil if
+// the wallet isn't configured; protected routes then respond with a clear error instead.
+func buildSeller(cfg config.Config) *x402.Seller {
+	client, err := algorand.NewClient(cfg)
+	if err != nil {
+		log.Printf("x402 seller unavailable (no wallet): %v", err)
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	seller, err := x402.NewSeller(ctx, client, cfg.SettlementAssetID)
+	if err != nil {
+		log.Printf("x402 seller unavailable: %v", err)
+		return nil
+	}
+	return seller
+}
+
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /health", s.handleHealth)
 	s.mux.HandleFunc("GET /api/state", s.handleState)
@@ -76,6 +101,35 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/state/reset", s.handleReset)
 	s.mux.HandleFunc("POST /api/decide", s.handleDecide)
 	s.mux.HandleFunc("POST /api/scenario/run", s.handleScenarioRun)
+
+	s.mux.HandleFunc("GET /pricing", research.PricingHandler)
+	handlers := research.Handlers()
+	for _, meta := range research.Pricing {
+		handler, ok := handlers[meta.Path]
+		if !ok {
+			continue
+		}
+		s.mux.HandleFunc("GET "+meta.Path, s.protectResearchEndpoint(meta, handler))
+	}
+}
+
+// protectResearchEndpoint wraps a research handler in the x402 paywall. If the seller
+// couldn't be built (wallet not configured), it responds with a clear 503 instead of
+// silently serving paid data for free.
+func (s *Server) protectResearchEndpoint(meta research.EndpointMeta, handler http.HandlerFunc) http.HandlerFunc {
+	if s.seller == nil {
+		return func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+				"error": "x402 seller unavailable: configure RATIONALGO_WALLET_ADDRESS / RATIONALGO_MNEMONIC",
+			})
+		}
+	}
+	priceInfo := x402.PriceInfo{
+		ResourcePath:    meta.Path,
+		Description:     meta.Description,
+		AmountBaseUnits: uint64(math.Round(meta.PriceUSD * 1_000_000)),
+	}
+	return s.seller.Protect(priceInfo, handler)
 }
 
 // ListenAndServe starts the HTTP server with CORS for local frontend dev.
@@ -184,8 +238,8 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request) {
 		req.SessionID = fmt.Sprintf("sess-%d", time.Now().UnixNano())
 	}
 
-	vendorSvc := vendor.NewService()
-	vendors := vendorSvc.GetDemoWeatherVendors()
+	vendorSvc := vendor.NewService(s.cfg.PublicBaseURL())
+	vendors := vendorSvc.GetResearchEndpoints()
 	state := s.store.State()
 
 	// Evaluate policy against the primary (paid) vendor with default budget parameters.

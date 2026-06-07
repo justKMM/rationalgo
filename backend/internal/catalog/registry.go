@@ -5,9 +5,10 @@ type Registry struct {
 	vendors []Vendor
 }
 
-// NewRegistry returns a registry seeded with the default vendor catalog.
-func NewRegistry() *Registry {
-	vendors := defaultVendors()
+// NewRegistry returns a registry seeded with the default vendor catalog. baseURL anchors
+// each vendor's EndpointURL — e.g. "http://localhost:8080" for the locally-hosted x402 sellers.
+func NewRegistry(baseURL string) *Registry {
+	vendors := defaultVendors(baseURL)
 	return &Registry{vendors: vendors}
 }
 
@@ -53,11 +54,10 @@ func (r *Registry) AllowedVendors() []Vendor {
 
 // Future integration (store/seed.go, agent discovery, hero demo):
 //
-//	reg := catalog.NewRegistry()
-//	weather := reg.GetByCategory("weather")
-//	chosen, _ := reg.GetByID("weather-pro")
+//	reg := catalog.NewRegistry(cfg.PublicBaseURL())
+//	research := reg.GetByCategory(catalog.CategoryCompanyResearch)
+//	chosen, _ := reg.GetByID("company-basic-info")
 //	allowed := reg.AllowedVendors()
 //
 // Dashboard seed data can derive vendor names, prices, and trust scores from the
-// registry instead of duplicating literals — e.g. FuelPriceAPI row from
-// reg.GetByID("fuel-price-api").
+// registry instead of duplicating literals.

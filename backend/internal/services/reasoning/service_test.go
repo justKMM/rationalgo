@@ -19,21 +19,21 @@ func TestGenerateDecision_Integration(t *testing.T) {
 	}
 
 	svc := reasoning.New(key)
-	vendorSvc := vendor.NewService()
-	vendors := vendorSvc.GetDemoWeatherVendors()
+	vendorSvc := vendor.NewService("http://localhost:8080")
+	vendors := vendorSvc.GetResearchEndpoints()
 	pol := policy.Evaluate(
 		vendors[0],
 		vendors[0].PriceEURQ,
 		0.0,
 		10.0,
-		[]string{"GoPlausible Weather", "OpenMeteo"},
+		[]string{vendors[0].Name, vendors[1].Name},
 		vendorSvc.GetPriceHistory(),
 	)
 
 	record, err := svc.GenerateDecision(
 		context.Background(),
 		"agent-01", "sess-001",
-		"Should drone deliveries operate in Frankfurt in the next 2 hours?",
+		reasoning.ResearchIntent(reasoning.DemoCompany, 1.0),
 		vendors,
 		pol,
 	)

@@ -16,7 +16,7 @@ type Record struct {
 	TrustDelta  float64
 }
 
-// Service verifies paid forecast responses against ground truth (stub).
+// Service verifies purchased research-endpoint confidence against the agent's pre-purchase estimate.
 type Service struct{}
 
 // NewService returns an outcome verification service.
@@ -24,12 +24,12 @@ func NewService() *Service {
 	return &Service{}
 }
 
-// Verify compares paid precipitation forecast to a simulated OpenMeteo ground truth.
-func (s *Service) Verify(ctx context.Context, paidPrecipPct float64) (*Record, error) {
+// Verify compares the confidence the agent expected to get for its money against the
+// confidence the endpoint's response actually reported, scoring how well the purchase paid off.
+func (s *Service) Verify(ctx context.Context, expectedConfidence, actualConfidence float64) (*Record, error) {
 	_ = ctx
-	groundTruth := 12.0 + math.Mod(paidPrecipPct, 5)
-	delta := math.Abs(paidPrecipPct - groundTruth)
-	score := math.Max(0, 1-delta/20)
+	delta := math.Abs(actualConfidence - expectedConfidence)
+	score := math.Max(0, 1-delta/0.5)
 
 	verdict := "Good purchase"
 	trustDelta := 0.08
@@ -39,16 +39,11 @@ func (s *Service) Verify(ctx context.Context, paidPrecipPct float64) (*Record, e
 	}
 
 	return &Record{
-		Predicted:   fmt.Sprintf("%.0f%% precip", paidPrecipPct),
-		Actual:      fmt.Sprintf("%.0f%% precip", groundTruth),
+		Predicted:   fmt.Sprintf("confidence ≈ %.2f", expectedConfidence),
+		Actual:      fmt.Sprintf("confidence %.2f (mock)", actualConfidence),
 		Score:       score,
-		GroundTruth: "OpenMeteo historical",
+		GroundTruth: "endpoint-reported confidence",
 		Verdict:     verdict,
 		TrustDelta:  trustDelta,
 	}, nil
-}
-
-// DemoPaidPrecip returns a simulated paid API precipitation value for the demo.
-func DemoPaidPrecip() float64 {
-	return 14.0
 }

@@ -13,9 +13,12 @@ import (
 	"rationalgo/internal/services/decision"
 )
 
-// DemoIntent is the fixed hero-scenario task for Frankfurt drone weather.
-func DemoIntent() string {
-	return "Should drone deliveries operate in Frankfurt in the next 2 hours?"
+// DemoCompany is the fixed research subject for the hero demo (kept constant for reproducible runs).
+const DemoCompany = "Atlas Robotics GmbH"
+
+// ResearchIntent describes the budgeted company-research task for the hero demo.
+func ResearchIntent(company string, budgetEURQ float64) string {
+	return fmt.Sprintf("Research %s within a €%.2f data budget — which paid sources are worth buying?", company, budgetEURQ)
 }
 
 const anthropicAPI = "https://api.anthropic.com/v1/messages"
@@ -75,49 +78,28 @@ type reasoningOutput struct {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-// GenerateDemoDecision returns a deterministic decision for the hero demo (no LLM).
-func (s *Service) GenerateDemoDecision(
-	ctx context.Context,
+// GenerateResearchDecision assembles a DecisionRecord for one budgeted endpoint purchase,
+// pairing the chosen research endpoint with orchestrator-supplied, data-driven alternatives
+// (the orchestrator owns the live knapsack/budget state needed to explain rejections).
+func (s *Service) GenerateResearchDecision(
 	intent string,
-	vendors []models.VendorOption,
+	chosen models.VendorOption,
+	alternatives []models.Alternative,
+	expectedValue string,
 ) (*models.DecisionRecord, error) {
-	_ = ctx
-	if len(vendors) == 0 {
-		return nil, fmt.Errorf("reasoning: no vendors available")
-	}
-
-	chosen := vendors[0]
-	for _, v := range vendors {
-		if v.ID == "goplausible-weather" {
-			chosen = v
-			break
-		}
-	}
-
-	var alts []models.Alternative
-	for _, v := range vendors {
-		if v.ID == chosen.ID {
-			continue
-		}
-		alts = append(alts, models.Alternative{
-			Vendor:         v,
-			ReasonRejected: fmt.Sprintf("Lower trust score (%.0f vs %.0f)", v.TrustScore, chosen.TrustScore),
-		})
-	}
-
 	record := &models.DecisionRecord{
 		ID:            fmt.Sprintf("dec-%d", models.NowMillis()),
 		TaskIntent:    intent,
 		VendorChosen:  chosen,
-		Alternatives:  alts,
-		ExpectedValue: "Precipitation forecast within 2h enables safe drone ops in Frankfurt.",
-		Confidence:    0.87,
+		Alternatives:  alternatives,
+		ExpectedValue: expectedValue,
+		Confidence:    chosen.SuccessRate,
 		Status:        models.StatusPending,
 		Timestamp:     models.NowMillis(),
 	}
 	hash, err := decision.HashCanonicalJSON(record)
 	if err != nil {
-		return nil, fmt.Errorf("reasoning: hash demo record: %w", err)
+		return nil, fmt.Errorf("reasoning: hash research record: %w", err)
 	}
 	record.ReasoningHash = hash
 	return record, nil

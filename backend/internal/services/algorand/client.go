@@ -137,6 +137,18 @@ func (c *Client) EnsureAssetOptIn(ctx context.Context, assetID uint64) error {
 	return nil
 }
 
+// SubmitSignedTxn broadcasts a pre-signed, msgpack-encoded transaction and waits for confirmation.
+func (c *Client) SubmitSignedTxn(ctx context.Context, raw []byte) (string, error) {
+	txID, err := c.algod.SendRawTransaction(raw).Do(ctx)
+	if err != nil {
+		return "", fmt.Errorf("send raw txn: %w", err)
+	}
+	if err := waitConfirmed(ctx, c.algod, txID); err != nil {
+		return "", fmt.Errorf("confirm txn: %w", err)
+	}
+	return txID, nil
+}
+
 // waitConfirmed waits for a txn without rapid polling (free RPC tiers rate-limit aggressively).
 func waitConfirmed(ctx context.Context, client *algod.Client, txID string) error {
 	select {
