@@ -12,14 +12,16 @@ export function TrustPipeline() {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <header className="flex shrink-0 flex-col items-center gap-1 px-4 py-5 text-center hairline-b">
-        <h2 className="text-[15px] font-semibold tracking-tight">Trust Pipeline</h2>
-        <p className="max-w-md text-[12px] text-muted-foreground">
-          Reasoning → policy → Algorand → x402 → verification → outcome anchor
+      <header className="flex shrink-0 flex-col gap-1 px-4 py-4 hairline-b">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-[15px] font-semibold tracking-tight">Trust Pipeline</h2>
+          <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+            {Math.min(stage, 6)}/6
+          </span>
+        </div>
+        <p className="text-[12px] text-muted-foreground">
+          Per-vendor: reasoning → policy → Algorand → x402 → verify → anchor
         </p>
-        <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
-          stage {Math.min(stage, 6)} / 6
-        </span>
       </header>
 
       <ol className="panel-scroll-body mx-auto w-full max-w-md px-6 py-5">

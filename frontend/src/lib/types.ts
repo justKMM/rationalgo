@@ -32,7 +32,18 @@ export type ScenarioEventType =
   | "payment.sent"
   | "decision.outcome"
   | "alert.fired"
+  | "research.plan"
   | "research.summary";
+
+export type VendorStepStatus = "pending" | "active" | "completed" | "blocked";
+
+export interface VendorPlanStep {
+  id: string;
+  name: string;
+  price: number;
+  order: number;
+  status: VendorStepStatus;
+}
 
 export interface ScenarioEvent {
   id: string;

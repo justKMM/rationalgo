@@ -1,5 +1,11 @@
 import { create } from "zustand";
-import type { DecisionRecord, ScenarioEvent, ScenarioEventType } from "@/lib/types";
+import type {
+  DecisionRecord,
+  ScenarioEvent,
+  ScenarioEventType,
+  VendorPlanStep,
+  VendorStepStatus,
+} from "@/lib/types";
 import {
   checkHealth,
   fetchDashboardState,
@@ -32,6 +38,7 @@ interface MissionState {
   running: boolean;
   apiLive: boolean;
   budgetTier: BudgetTier;
+  vendorPlan: VendorPlanStep[];
   error: string | null;
   _timers: ReturnType<typeof setTimeout>[];
   _abort: AbortController | null;
@@ -74,6 +81,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   running: false,
   apiLive: false,
   budgetTier: "mid",
+  vendorPlan: [],
   error: null,
   _timers: [],
   _abort: null,
@@ -110,6 +118,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       events: [],
       activeDecision: null,
       pipelineStage: 0,
+      vendorPlan: [],
       running: false,
       error: null,
       _timers: [],
@@ -146,6 +155,16 @@ function pushEvent(
   set((s) => ({ events: [...s.events, evt] }));
 }
 
+function setVendorStatus(
+  plan: VendorPlanStep[],
+  vendorName: string,
+  status: VendorStepStatus,
+): VendorPlanStep[] {
+  return plan.map((step) =>
+    step.name === vendorName ? { ...step, status } : step,
+  );
+}
+
 function finalizeActive(
   set: (partial: Partial<MissionState> | ((s: MissionState) => Partial<MissionState>)) => void,
   get: () => MissionState,
@@ -168,9 +187,34 @@ function handleBackendEvent(
   budget?: number,
 ): void {
   switch (event.type) {
+    case "research.plan": {
+      const payload = event.payload as {
+        vendors?: Array<{
+          id: string;
+          name: string;
+          price_eurq: number;
+          order: number;
+        }>;
+      };
+      const vendorPlan: VendorPlanStep[] = (payload.vendors ?? []).map((v) => ({
+        id: v.id,
+        name: v.name,
+        price: v.price_eurq,
+        order: v.order,
+        status: "pending",
+      }));
+      set({ vendorPlan, pipelineStage: 1 });
+      pushEvent(
+        set,
+        get,
+        "agent.thinking",
+        `Plan ready · ${vendorPlan.length} vendor${vendorPlan.length === 1 ? "" : "s"} in queue`,
+      );
+      break;
+    }
     case "agent.thinking": {
       const payload = event.payload as { intent?: string; company?: string; budget_eurq?: number };
-      set({ pipelineStage: 1 });
+      set({ pipelineStage: 1, vendorPlan: [] });
       pushEvent(
         set,
         get,
@@ -181,7 +225,19 @@ function handleBackendEvent(
     }
     case "decision.pending": {
       const record = mapBackendRecord(event.payload, budget);
-      set({ activeDecision: record, pipelineStage: 1 });
+      set((s) => ({
+        activeDecision: record,
+        pipelineStage: 1,
+        vendorPlan: s.vendorPlan.map((step) => ({
+          ...step,
+          status:
+            step.name === record.vendor
+              ? "active"
+              : step.status === "active"
+              ? "pending"
+              : step.status,
+        })),
+      }));
       pushEvent(
         set,
         get,
@@ -275,6 +331,7 @@ function handleBackendEvent(
       const record = mapBackendRecord(event.payload, budget);
       set((s) => ({
         pipelineStage: record.txOutcome ? 6 : 5,
+        vendorPlan: setVendorStatus(s.vendorPlan, record.vendor, "completed"),
         activeDecision: s.activeDecision
           ? mergeDecisionRecord(s.activeDecision, {
               ...record,
@@ -306,6 +363,7 @@ function handleBackendEvent(
       const record = mapBackendRecord(event.payload, budget);
       set((s) => ({
         pipelineStage: 2,
+        vendorPlan: setVendorStatus(s.vendorPlan, record.vendor, "blocked"),
         activeDecision: s.activeDecision
           ? mergeDecisionRecord(s.activeDecision, { ...record, policyStatus: "blocked" })
           : { ...record, policyStatus: "blocked" },
@@ -362,6 +420,7 @@ async function runLiveScenario(
     events: [],
     activeDecision: null,
     pipelineStage: 0,
+    vendorPlan: [],
     running: true,
     error: null,
     _timers: [],
@@ -397,10 +456,20 @@ function runMockScenario(
   const state = get();
   state._timers.forEach(clearTimeout);
   const script = buildScenario(kind);
+  const mockPlan: VendorPlanStep[] = [
+    {
+      id: "mock-vendor",
+      name: script.decision.vendor,
+      price: script.decision.cost,
+      order: 1,
+      status: "pending",
+    },
+  ];
   set({
     events: [],
     activeDecision: script.decision,
     pipelineStage: 0,
+    vendorPlan: mockPlan,
     running: true,
     _timers: [],
   });
@@ -419,10 +488,22 @@ function runMockScenario(
       const nextDecision = step.patch && s.activeDecision
         ? { ...s.activeDecision, ...step.patch }
         : s.activeDecision;
+      const vendorPlan = [...s.vendorPlan];
+      if (step.event?.type === "decision.pending" && vendorPlan.length > 0) {
+        vendorPlan[0] = { ...vendorPlan[0], status: "active" };
+      }
+      if (step.finalize && vendorPlan.length > 0) {
+        vendorPlan[0] = {
+          ...vendorPlan[0],
+          status: nextDecision?.policyStatus === "blocked" ? "blocked" : "completed",
+        };
+      }
+
       set({
         pipelineStage: step.stage,
         events: evt ? [...s.events, evt] : s.events,
         activeDecision: nextDecision,
+        vendorPlan,
       });
       if (step.finalize && nextDecision) {
         const newHistory = [nextDecision, ...s.history];

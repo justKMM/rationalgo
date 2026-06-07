@@ -16,7 +16,7 @@ export function TopBar() {
 
   return (
     <header className="sticky top-0 z-40 hairline-b bg-background/85 backdrop-blur-md">
-      <div className="mx-auto flex h-12 max-w-[1100px] items-center gap-6 px-4 lg:px-6">
+      <div className="mx-auto flex h-12 max-w-[1280px] items-center gap-6 px-4 lg:px-6">
         <div className="flex items-center gap-2">
           <div className="grid h-5 w-5 place-items-center rounded-[5px] bg-foreground text-background">
             <span className="text-[10px] font-bold leading-none">R</span>

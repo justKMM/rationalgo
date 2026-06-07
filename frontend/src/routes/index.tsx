@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { TopBar } from "@/components/mission-control/TopBar";
+import { BudgetTierBar } from "@/components/mission-control/BudgetTierBar";
 import { TrustPipeline } from "@/components/mission-control/TrustPipeline";
+import { VendorPipeline } from "@/components/mission-control/VendorPipeline";
 import { OpsCorner } from "@/components/mission-control/TrustMetrics";
 import { DecisionHistoryTable } from "@/components/mission-control/DecisionHistoryTable";
 import { DecisionDetailsDrawer } from "@/components/mission-control/DecisionDetailsDrawer";
@@ -24,10 +26,19 @@ function MissionControl() {
     <div className="min-h-screen bg-background text-foreground">
       <TopBar />
 
-      <main className="mx-auto w-full max-w-[1100px] px-4 py-4 lg:px-6 lg:py-5">
-        <section className="panel-pipeline-h relative flex min-h-0 flex-col overflow-hidden rounded-[10px] border border-border bg-surface">
-          <OpsCorner />
-          <TrustPipeline />
+      <main className="mx-auto w-full max-w-[1280px] px-4 py-4 lg:px-6 lg:py-5">
+        <section className="overflow-hidden rounded-[10px] border border-border bg-surface">
+          <BudgetTierBar />
+
+          <div className="panel-pipeline-h relative grid min-h-0 grid-cols-1 pb-14 lg:grid-cols-2">
+            <OpsCorner />
+            <div className="flex min-h-0 flex-col hairline-b lg:hairline-r lg:border-b-0">
+              <TrustPipeline />
+            </div>
+            <div className="flex min-h-0 flex-col">
+              <VendorPipeline />
+            </div>
+          </div>
         </section>
 
         <div className="mt-4">

@@ -29,6 +29,7 @@ const (
 	EventDecisionOutcome   EventType = "decision.outcome"
 	EventDecisionBlocked   EventType = "decision.blocked"
 	EventAlertFired        EventType = "alert.fired"
+	EventResearchPlan      EventType = "research.plan"
 	EventResearchSummary   EventType = "research.summary"
 )
 
@@ -128,6 +129,21 @@ func runScenario(ctx context.Context, scenario ScenarioType, deps Deps, ch chan<
 	if len(plan) == 0 {
 		return
 	}
+
+	planVendors := make([]map[string]interface{}, len(plan))
+	for i, step := range plan {
+		planVendors[i] = map[string]interface{}{
+			"id":         step.vendor.ID,
+			"name":       step.vendor.Name,
+			"price_eurq": step.vendor.PriceEURQ,
+			"order":      i + 1,
+		}
+	}
+	emit(EventResearchPlan, map[string]interface{}{
+		"company":     reasoning.DemoCompany,
+		"budget_eurq": budget,
+		"vendors":     planVendors,
+	})
 
 	priceHist := deps.PriceHist()
 	if scenario == ScenarioAnomaly && deps.Inject != nil {

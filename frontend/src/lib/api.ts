@@ -85,6 +85,7 @@ export type BackendScenarioEventType =
   | "decision.outcome"
   | "decision.blocked"
   | "alert.fired"
+  | "research.plan"
   | "research.summary";
 
 export interface BackendScenarioEvent {
